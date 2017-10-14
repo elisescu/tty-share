@@ -1,0 +1,8 @@
+**/node_modules/
+.DS_Store
+bundle.js
+playground/
+.vscode/
+tty_sender
+tty_server
+tmp-*
