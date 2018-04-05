@@ -1,3 +1,5 @@
+public/
+output.log
 **/node_modules/
 .DS_Store
 bundle.js
@@ -6,3 +8,4 @@ playground/
 tty_sender
 tty_server
 tmp-*
+tty-server/assets_bundle.go

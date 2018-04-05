@@ -23,6 +23,8 @@ console.log(derivedKey);
 var wsAddress = 'ws://' + window.location.host + window.ttyInitialData.wsPath;
 var connection = new WebSocket(wsAddress);
 
+
+
 term.open(document.getElementById('terminal'), true);
 //term.attach(connection);
 

@@ -50,7 +50,23 @@ func NewTTYProxyServer(config TTYProxyServerConfig) (server *TTYProxyServer) {
 		Addr: config.WebAddress,
 	}
 	routesHandler := mux.NewRouter()
-	routesHandler.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("frontend"))))
+
+	if config.FrontendPath != "" {
+		routesHandler.PathPrefix("/static/").Handler(http.StripPrefix("/static/",
+			http.FileServer(http.Dir(config.FrontendPath))))
+	} else {
+		// Serve the bundled assets
+		routesHandler.PathPrefix("/static/").Handler(http.StripPrefix("/static/",
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				data, err := Asset(r.URL.Path)
+				if err != nil {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				w.Write(data)
+				log.Infof("Delivered %s from the bundle", r.URL.Path)
+			})))
+	}
 
 	routesHandler.HandleFunc("/", defaultHandler)
 	routesHandler.HandleFunc("/s/{sessionID}", func(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +138,16 @@ func sessionsHandler(server *TTYProxyServer, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	t, err := template.ParseFiles("./frontend/templates/index.html")
+	templateDta, err := Asset("templates/index.html")
+
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+		return
+	}
+
+	t := template.New("index.html")
+	_, err = t.Parse(string(templateDta))
+
 	if err != nil {
 		fmt.Fprintf(w, err.Error())
 		return
