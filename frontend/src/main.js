@@ -20,8 +20,15 @@ var term = new Terminal({
 var derivedKey = pbkdf2.pbkdf2Sync('password', 'salt', 4096, 32, 'sha256');
 console.log(derivedKey);
 
-var wsAddress = 'ws://' + window.location.host + window.ttyInitialData.wsPath;
-var connection = new WebSocket(wsAddress);
+let wsAddress = "";
+if (window.location.protocol === "https:") {
+   wsAddress = 'wss://';
+} else {
+    wsAddress = "ws://";
+}
+
+wsAddress += window.location.host + window.ttyInitialData.wsPath;
+let connection = new WebSocket(wsAddress);
 
 
 

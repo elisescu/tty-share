@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -20,6 +22,7 @@ func main() {
 	commandName := flag.String("command", "bash", "The command to run")
 	commandArgs := flag.String("args", "", "The command arguments")
 	logFileName := flag.String("logfile", "-", "The name of the file to log")
+	useTLS := flag.Bool("useTLS", true, "Use TLS to connect to the server")
 	server := flag.String("server", "localhost:7654", "tty-proxyserver address")
 	flag.Parse()
 
@@ -36,17 +39,37 @@ func main() {
 
 	// TODO: check we are running inside a tty environment, and exit if not
 
-	tcpConn, err := net.Dial("tcp", *server)
-	if err != nil {
-		fmt.Printf("Cannot connect to the server (%s): %s", *server, err.Error())
-		return
+	var rawConnection io.ReadWriteCloser
+	if *useTLS {
+		roots, err := x509.SystemCertPool()
+		if err != nil {
+			fmt.Printf("Cannot connect to the server (%s): %s", *server, err.Error())
+			return
+		}
+		rawConnection, err = tls.Dial("tcp", *server, &tls.Config{RootCAs: roots})
+		if err != nil {
+			fmt.Printf("Cannot connect (TLS) to the server (%s): %s", *server, err.Error())
+			return
+		}
+	} else {
+		var err error
+		rawConnection, err = net.Dial("tcp", *server)
+		if err != nil {
+			fmt.Printf("Cannot connect to the server (%s): %s", *server, err.Error())
+			return
+		}
 	}
 
-	serverConnection := common.NewTTYProtocolConn(tcpConn)
+	serverConnection := common.NewTTYProtocolConn(rawConnection)
 	reply, err := serverConnection.InitSender(common.SenderSessionInfo{
 		Salt:              "salt",
 		PasswordVerifierA: "PV_A",
 	})
+
+	if err != nil {
+		fmt.Printf("Cannot initialise the protocol connection: %s", err.Error())
+		return
+	}
 
 	log.Infof("Web terminal: %s", reply.URLWebReadWrite)
 
