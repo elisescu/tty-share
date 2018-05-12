@@ -1,11 +1,16 @@
-var path = require('path');
-module.exports = {
-    entry: './src/main.js',
-    output: {
-        path: __dirname,
-        filename: 'bundle.js'
+const webpack = require("webpack");
+const copyWebpackPlugin = require('copy-webpack-plugin')
+
+const develBuild = process.env.TTY_SHARE_ENV === 'development';
+
+let mainConfig  = {
+    entry: {
+        'tty-receiver': './tty-receiver/main.js',
     },
-    devtool: 'inline-source-map',
+    output: {
+        path: __dirname + '/public/',
+        filename: '[name].js',
+    },
     module: {
         rules: [
             {
@@ -47,5 +52,21 @@ module.exports = {
                 use: ['source-map-loader']
             }
         ]
-    }
+    },
+    plugins: [
+        new copyWebpackPlugin([
+            'static',
+            'templates',
+        ], {
+            debug: 'info',
+        }),
+    ],
 };
+
+if (develBuild) {
+    mainConfig.devtool = 'inline-source-map';
+} else {
+    mainConfig.plugins.push(new webpack.optimize.UglifyJsPlugin( { minimize: true }));
+}
+
+module.exports = mainConfig;

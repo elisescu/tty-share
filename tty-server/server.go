@@ -2,14 +2,22 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"html/template"
+	"mime"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+)
+
+const (
+	errorInvalidSession = iota
+	errorNotFound       = iota
+	errorNotAllowed     = iota
 )
 
 var log = MainLogger
@@ -41,6 +49,35 @@ type TTYProxyServer struct {
 	activeSessionsRWLock sync.RWMutex
 }
 
+func (server *TTYProxyServer) serveContent(w http.ResponseWriter, r *http.Request, name string) {
+	// If a path to the frontend resources was passed, serve from there, otherwise, serve from the
+	// builtin bundle
+	if server.config.FrontendPath == "" {
+		file, err := Asset(name)
+
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		ctype := mime.TypeByExtension(filepath.Ext(name))
+		if ctype == "" {
+			ctype = http.DetectContentType(file)
+		}
+		w.Header().Set("Content-Type", ctype)
+		w.Write(file)
+	} else {
+		_, err := os.Open(server.config.FrontendPath + string(os.PathSeparator) + name)
+
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		http.ServeFile(w, r, name)
+	}
+}
+
 // NewTTYProxyServer creates a new instance
 func NewTTYProxyServer(config TTYProxyServerConfig) (server *TTYProxyServer) {
 	server = &TTYProxyServer{
@@ -51,29 +88,22 @@ func NewTTYProxyServer(config TTYProxyServerConfig) (server *TTYProxyServer) {
 	}
 	routesHandler := mux.NewRouter()
 
-	if config.FrontendPath != "" {
-		routesHandler.PathPrefix("/static/").Handler(http.StripPrefix("/static/",
-			http.FileServer(http.Dir(config.FrontendPath))))
-	} else {
-		// Serve the bundled assets
-		routesHandler.PathPrefix("/static/").Handler(http.StripPrefix("/static/",
-			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				data, err := Asset(r.URL.Path)
-				if err != nil {
-					w.WriteHeader(http.StatusNotFound)
-					return
-				}
-				w.Write(data)
-				log.Infof("Delivered %s from the bundle", r.URL.Path)
-			})))
-	}
+	routesHandler.PathPrefix("/static/").Handler(http.StripPrefix("/static/",
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server.serveContent(w, r, r.URL.Path)
+		})))
 
-	routesHandler.HandleFunc("/", defaultHandler)
+	routesHandler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		server.serveContent(w, r, "index.html")
+	})
 	routesHandler.HandleFunc("/s/{sessionID}", func(w http.ResponseWriter, r *http.Request) {
-		sessionsHandler(server, w, r)
+		server.handleSession(w, r)
 	})
 	routesHandler.HandleFunc("/ws/{sessionID}", func(w http.ResponseWriter, r *http.Request) {
-		websocketHandler(server, w, r)
+		server.handleWebsocket(w, r)
+	})
+	routesHandler.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.serveContent(w, r, "404.html")
 	})
 
 	server.activeSessions = make(map[string]*ttyShareSession)
@@ -85,14 +115,14 @@ func getWSPath(sessionID string) string {
 	return "/ws/" + sessionID
 }
 
-func websocketHandler(server *TTYProxyServer, w http.ResponseWriter, r *http.Request) {
+func (server *TTYProxyServer) handleWebsocket(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	sessionID := vars["sessionID"]
 	defer log.Debug("Finished WS connection for ", sessionID)
 
 	// Validate incoming request.
 	if r.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
@@ -112,20 +142,14 @@ func websocketHandler(server *TTYProxyServer, w http.ResponseWriter, r *http.Req
 
 	if session == nil {
 		log.Error("WE connection for invalid sessionID: ", sessionID, ". Killing it.")
-		// TODO: Create a proper way to communicate with the remote WS end, so that the server can send
-		// control messages or data messages to go directly to the terminal.
-		conn.WriteMessage(websocket.TextMessage, []byte("$ access denied."))
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
 	session.HandleReceiver(newWSConnection(conn))
 }
 
-func defaultHandler(http.ResponseWriter, *http.Request) {
-	log.Debug("Default handler ")
-}
-
-func sessionsHandler(server *TTYProxyServer, w http.ResponseWriter, r *http.Request) {
+func (server *TTYProxyServer) handleSession(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	sessionID := vars["sessionID"]
 
@@ -133,31 +157,41 @@ func sessionsHandler(server *TTYProxyServer, w http.ResponseWriter, r *http.Requ
 
 	session := getSession(server, sessionID)
 
+	// No valid session with this ID
 	if session == nil {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		server.serveContent(w, r, "invalid-session.html")
 		return
 	}
 
-	templateDta, err := Asset("templates/index.html")
+	var t *template.Template
+	var err error
+	if server.config.FrontendPath == "" {
+		templateDta, err := Asset("tty-receiver.in.html")
+
+		if err != nil {
+			panic("Cannot find the tty-receiver html template")
+		}
+
+		t = template.New("tty-receiver.html")
+		_, err = t.Parse(string(templateDta))
+	} else {
+		t, err = template.ParseFiles(server.config.FrontendPath + string(os.PathSeparator) + "tty-receiver.in.html")
+	}
 
 	if err != nil {
-		fmt.Fprintf(w, err.Error())
-		return
+		panic("Cannot parse the tty-receiver html template")
 	}
 
-	t := template.New("index.html")
-	_, err = t.Parse(string(templateDta))
-
-	if err != nil {
-		fmt.Fprintf(w, err.Error())
-		return
-	}
 	templateModel := SessionTemplateModel{
 		SessionID: sessionID,
 		Salt:      "salt&pepper",
 		WSPath:    getWSPath(sessionID),
 	}
-	t.Execute(w, templateModel)
+	err = t.Execute(w, templateModel)
+
+	if err != nil {
+		panic("Cannot execute the tty-receiver html template")
+	}
 }
 
 func addNewSession(server *TTYProxyServer, session *ttyShareSession) {

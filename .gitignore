@@ -1,4 +1,4 @@
-public/
+frontend/public/
 output.log
 **/node_modules/
 .DS_Store

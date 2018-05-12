@@ -9,44 +9,33 @@ TTY_SENDER=tty_sender
 TTY_SERVER_SRC=$(filter-out ./tty-server/assets_bundle.go, $(wildcard ./tty-server/*.go)) ./tty-server/assets_bundle.go
 TTY_SENDER_SRC=$(wildcard ./tty-sender/*.go)
 EXTRA_BUILD_DEPS=$(wildcard ./common/*go)
-TTY_SERVER_ASSETS=$(addprefix ./public/templates/,$(notdir $(wildcard ./frontend/templates/*))) public/bundle.js
+TTY_SERVER_ASSETS=$(wildcard frontend/public/*)
 
 all: $(TTY_SERVER) $(TTY_SENDER)
 	@echo "All done"
 
-$(TTY_SERVER): $(TTY_SERVER_SRC) $(EXTRA_BUILD_DEPS) $(TTY_SERVER_ASSETS)
+$(TTY_SERVER): $(TTY_SERVER_SRC) $(EXTRA_BUILD_DEPS)
 	go build -o $@ $(TTY_SERVER_SRC)
 
 $(TTY_SENDER): $(TTY_SENDER_SRC) $(EXTRA_BUILD_DEPS)
 	go build -o $@ $(TTY_SENDER_SRC)
 
-# TODO: perhaps replace all these paths with variables?
-frontend/bundle.js: $(wildcard ./frontend/src/*)
-	cd frontend && npm run build && cd -
-
-public/bundle.js: frontend/bundle.js
-	mkdir -p $(dir $@)
-	cp $^ $@
-
-public/templates/%: frontend/templates/%
-	mkdir -p $(dir $@)
-	cp $^ $@
-
 tty-server/assets_bundle.go: $(TTY_SERVER_ASSETS)
-	go-bindata --prefix public -o $@ $^
+	go-bindata --prefix frontend/public/ -o $@ $^
 
 frontend: FORCE
 	cd frontend && npm run build && cd -
 
 clean:
-	@rm -f $(TTY_SERVER) $(TTY_SENDER)
+	rm -f $(TTY_SERVER) $(TTY_SENDER)
+	rm -fr frontend/out/
 	@echo "Cleaned"
 
 runs: $(TTY_SERVER)
-	@./$(TTY_SERVER) --url http://localhost:9090 --web_address :9090 --sender_address :7654
+	./$(TTY_SERVER) --url http://localhost:9090 --web_address :9090 --sender_address :7654
 
 runc: $(TTY_SENDER)
-	@./$(TTY_SENDER) --logfile output.log
+	./$(TTY_SENDER) --logfile output.log --useTLS=false
 
 test:
 	@go test github.com/elisescu/tty-share/testing -v
