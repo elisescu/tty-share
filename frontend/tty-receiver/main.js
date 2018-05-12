@@ -33,12 +33,11 @@ let connection = new WebSocket(wsAddress);
 
 
 term.open(document.getElementById('terminal'), true);
-//term.attach(connection);
 
 term.write("$");
 
 connection.onclose = function(evt) {
-    console.log("Got the WS closed !!");
+    console.log("Got the WS closed: ", evt);
     term.write("disconnected");
 }
 

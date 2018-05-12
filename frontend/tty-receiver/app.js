@@ -10,15 +10,6 @@ class App extends Component {
     }
     render() {
         return (<div> </div>);
-        return (
-            <MuiThemePro>
-                <TextField
-                    hintText="Password Field"
-                    floatingLabelText="Password"
-                    type="password"
-                />
-            </MuiThemePro>
-        );
     }
 }
 export default App;
