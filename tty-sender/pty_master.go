@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"syscall"
+	"time"
 
 	ptyDevice "github.com/elisescu/pty"
 	"golang.org/x/crypto/ssh/terminal"
@@ -61,7 +62,8 @@ func (pty *ptyMaster) Start(command string, args []string, winChangedCB onWindow
 }
 
 func (pty *ptyMaster) GetWinSize() (int, int, error) {
-	return terminal.GetSize(0)
+	cols, rows, err := terminal.GetSize(0)
+	return cols, rows, err
 }
 
 func (pty *ptyMaster) Write(b []byte) (int, error) {
@@ -74,6 +76,23 @@ func (pty *ptyMaster) Read(b []byte) (int, error) {
 
 func (pty *ptyMaster) SetWinSize(rows, cols int) {
 	ptyDevice.Setsize(pty.ptyFile, rows, cols)
+}
+
+func (pty *ptyMaster) Refresh() {
+	// We wanna force the app to re-draw itself, but there doesn't seem to be a way to do that
+	// so we fake it by resizing the window quickly, making it smaller and then back big
+	cols, rows, err := pty.GetWinSize()
+
+	if err != nil {
+		return
+	}
+
+	pty.SetWinSize(rows-1, cols)
+
+	go func() {
+		time.Sleep(time.Millisecond * 50)
+		pty.SetWinSize(rows, cols)
+	}()
 }
 
 func (pty *ptyMaster) Wait() (err error) {

@@ -153,6 +153,16 @@ func (session *ttyShareSession) HandleReceiver(rawConn *WSConnection) {
 	// Sending the initial size of the window, if we have one
 	rcvProtoConn.WriteRawData(lastWindowSize)
 
+	// Notify the tty-sender that we got a new receiver connected
+	msgRcvConnected, err := MarshalMsg(MsgTTYSenderNewReceiverConnected{
+		Name: rawConn.Address(),
+	})
+	senderConn.WriteRawData(msgRcvConnected)
+
+	if err != nil {
+		log.Errorf("Cannot notify tty-sender. Error: %s", err.Error())
+	}
+
 	// Wait until the TTYReceiver will close the connection on its end
 	for {
 		msg, err := rcvProtoConn.ReadMessage()

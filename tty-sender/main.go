@@ -114,6 +114,13 @@ func main() {
 				json.Unmarshal(msg.Data, &msgWrite)
 				ptyMaster.Write(msgWrite.Data[:msgWrite.Size])
 			}
+			if msg.Type == common.MsgIDSenderNewReceiverConnected {
+				var msgReceiverConnected common.MsgTTYSenderNewReceiverConnected
+				json.Unmarshal(msg.Data, &msgReceiverConnected)
+
+				ptyMaster.Refresh()
+				fmt.Printf("New receiver connected: %s ", msgReceiverConnected.Name)
+			}
 		}
 	}()
 
