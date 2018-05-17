@@ -38,7 +38,7 @@ term.write("$");
 
 connection.onclose = function(evt) {
     console.log("Got the WS closed: ", evt);
-    term.write("disconnected");
+    window.location.reload();
 }
 
 connection.onmessage = function(evt) {
