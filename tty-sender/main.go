@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -75,8 +74,7 @@ func main() {
 
 	// Display the session information to the user, before showing any output from the command.
 	// Wait until the user presses Enter
-	fmt.Printf("Web terminal: %s. Press Enter to continue. \n\r", reply.URLWebReadWrite)
-	bufio.NewReader(os.Stdin).ReadBytes('\n')
+	fmt.Printf("Web terminal: %s. Press Enter to continue. \n\n\r", reply.URLWebReadWrite)
 	//TODO: if the user on the remote side presses keys, and so messages are sent back to the
 	// tty_sender, they will be delivered all at once, after Enter has been pressed. Fix that.
 
