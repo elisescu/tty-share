@@ -36,7 +36,7 @@ clean:
 	@echo "Cleaned"
 
 runs: $(TTY_SERVER)
-	./$(TTY_SERVER) --url http://localhost:9090 --web_address :9090 --sender_address :7654
+	./$(TTY_SERVER) --url http://localhost:9090 --web_address :9090 --sender_address :7654 -frontend_path ./frontend/public
 
 runc: $(TTY_SENDER)
 	./$(TTY_SENDER) --logfile output.log --useTLS=false

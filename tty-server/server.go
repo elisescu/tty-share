@@ -67,14 +67,17 @@ func (server *TTYProxyServer) serveContent(w http.ResponseWriter, r *http.Reques
 		w.Header().Set("Content-Type", ctype)
 		w.Write(file)
 	} else {
-		_, err := os.Open(server.config.FrontendPath + string(os.PathSeparator) + name)
+		filePath := server.config.FrontendPath + string(os.PathSeparator) + name
+		_, err := os.Open(filePath)
 
 		if err != nil {
+			log.Errorf("Couldn't find resource: %s at %s", name, filePath)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
+		log.Debugf("Serving %s from %s", name, filePath)
 
-		http.ServeFile(w, r, name)
+		http.ServeFile(w, r, filePath)
 	}
 }
 
