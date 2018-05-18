@@ -97,7 +97,7 @@ func NewTTYProxyServer(config TTYProxyServerConfig) (server *TTYProxyServer) {
 		})))
 
 	routesHandler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		server.serveContent(w, r, "index.html")
+		http.Redirect(w, r, "https://github.com/elisescu/tty-share", http.StatusMovedPermanently)
 	})
 	routesHandler.HandleFunc("/s/{sessionID}", func(w http.ResponseWriter, r *http.Request) {
 		server.handleSession(w, r)
