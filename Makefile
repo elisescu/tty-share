@@ -23,9 +23,11 @@ $(TTY_SENDER): $(TTY_SENDER_SRC) $(EXTRA_BUILD_DEPS)
 tty-server/assets_bundle.go: $(TTY_SERVER_ASSETS)
 	go-bindata --prefix frontend/public/ -o $@ $^
 
-dist: frontend $(TTY_SENDER_SRC) $(EXTRA_BUILD_DEPS)
+dist: frontend $(TTY_SERVER_SRC) $(TTY_SENDER_SRC) $(EXTRA_BUILD_DEPS)
 	GOOS=linux go build -o tty_server.linux $(TTY_SERVER_SRC)
 	GOOS=darwin go build -o tty_server.darwin $(TTY_SERVER_SRC)
+	GOOS=linux go build -o tty_sender.linux $(TTY_SENDER_SRC)
+	GOOS=darwin go build -o tty_sender.darwin $(TTY_SENDER_SRC)
 
 frontend: FORCE
 	cd frontend && npm run build && cd -

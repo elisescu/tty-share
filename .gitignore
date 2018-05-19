@@ -5,7 +5,7 @@ output.log
 bundle.js
 playground/
 .vscode/
-tty_sender
-tty_server
+tty_sender*
+tty_server*
 tmp-*
 tty-server/assets_bundle.go
