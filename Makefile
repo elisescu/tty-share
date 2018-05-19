@@ -35,11 +35,13 @@ clean:
 	rm -fr frontend/out/
 	@echo "Cleaned"
 
+# Runs the server, without TLS/HTTPS (no need for localhost testing)
 runs: $(TTY_SERVER)
 	./$(TTY_SERVER) --url http://localhost:9090 --web_address :9090 --sender_address :7654 -frontend_path ./frontend/public
 
+# Runs the sender, without TLS (no need for localhost testing)
 runc: $(TTY_SENDER)
-	./$(TTY_SENDER) --logfile output.log --useTLS=false
+	./$(TTY_SENDER) --useTLS=false
 
 test:
 	@go test github.com/elisescu/tty-share/testing -v

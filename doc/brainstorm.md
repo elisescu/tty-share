@@ -1,22 +1,24 @@
-## Overview of the architecture
+Information here might not be accurate, as this file was used as a dump of all random ideas that came at the beginning of the project. Many of them are not implemented, or were abandoned.
+
+## Architecture
 
 ```
 
                                     B
           A                        +-------------+
           +-----------------+      |             |       C
-          |  TTYSender(cmd) | <+-> |  TTYProxy   |      +-------------------+
-          +-----------------+      |   Server    | <-+->| TTYReceiver(web)  |
+          | tty_sender(cmd) | <+-> | tty_server  |      +-------------------+
+          +-----------------+      |             | <-+->| tty_receiver(web) |
                                    |             |      +-------------------+
                                    |             |
                                    |             |       D
                                    |             |      +-------------------+
-                                   |             | <-+->| TTYReceiver(ssh)  |
+                                   |             | <-+->| tty_receiver(ssh) |
                                    |             |      +-------------------+
                                    |             |
           M                        |             |      N
           +-----------------+      |             |      +-------------------+
-          |  TTYSender(cmd) | <+-> |             | <-+->| TTYREceiver(web)  |
+          | tty_sender(cmd) | <+-> |             | <-+->| tty_receiver(web) |
           +-----------------+      +-------------+      +-------------------+
 ```
 ##
@@ -26,7 +28,7 @@ M <-> N
 ```
 
 ### A
-Where A is the TTYSender, which will be used by the user Alice to share her terminal session. She will start it in the command line, with something like:
+Where A is the tty_sender, which will be used by the user Alice to share her terminal session. She will start it in the command line, with something like:
 ```
 tty-share bash
 ```
@@ -42,7 +44,7 @@ Url number 2. will allow the user to interact with the terminale.
 Url number 3. ssh access, to follow the remote command from a remote terminal.
 Url number 4. provides an interface to control various options related to sharing.
 ### B
-B is the TTYProxyServer, which will be publicly accessible and to which the TTYSender will connect to. On the TTYProxyServer will be created te sessions (read-only and write), and URLs will be returned back to A. Whent the command that A started exits, the session will end, so C should know.
+B is the tty_server, which will be publicly accessible and to which the tty_sender will connect to. On the tty_server will be created te sessions (read-only and write), and URLs will be returned back to A. Whent the command that A started exits, the session will end, so C should know.
 ### C
 C is the browser via which user Chris will receive the terminal which Alice has shared.
 

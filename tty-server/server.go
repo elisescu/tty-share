@@ -255,6 +255,7 @@ func (server *TTYProxyServer) Listen() (err error) {
 		wg.Done()
 	}()
 
+	// TODO: Add support for listening for connections over TLS
 	// Listen on connections on the tty sender side
 	server.ttySendersListener, err = net.Listen("tcp", server.config.TTYSenderAddress)
 	if err != nil {
