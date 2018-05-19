@@ -2,11 +2,11 @@ package main
 
 import (
 	"container/list"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net"
 	"sync"
-	"time"
 
 	. "github.com/elisescu/tty-share/common"
 )
@@ -27,8 +27,14 @@ type ttyShareSession struct {
 }
 
 func generateNewSessionID() string {
-	// TODO: replace this with a proper way of generating secret session IDs
-	return fmt.Sprintf("%x", time.Now().UnixNano())
+	binID := make([]byte, 32)
+	_, err := rand.Read(binID)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return base64.URLEncoding.EncodeToString([]byte(binID))
 }
 
 func newTTYShareSession(conn net.Conn, serverURL string) *ttyShareSession {
