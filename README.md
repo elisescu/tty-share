@@ -9,7 +9,7 @@ The `tty_sender` is used on the machine that wants to share the terminal, and it
 
 Read more about how it works in the [documentation](doc/architecture.md).
 
-[demo](doc/demo.gif)
+![demo](doc/demo.gif)
 
 Building and running the code
 =============================
