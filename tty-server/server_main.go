@@ -15,7 +15,7 @@ func main() {
 	webAddress := flag.String("web_address", ":80", "The bind address for the web interface")
 	senderAddress := flag.String("sender_address", ":6543", "The bind address for the tty_sender connections")
 	url := flag.String("url", "http://localhost", "The public web URL the server will be accessible at")
-	frontendPath := flag.String("frontend_path", "frontend", "The path to the frontend resources")
+	frontendPath := flag.String("frontend_path", "", "The path to the frontend resources")
 	flag.Parse()
 
 	log := MainLogger
