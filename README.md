@@ -11,6 +11,17 @@ Read more about how it works in the [documentation](doc/architecture.md).
 
 ![demo](doc/demo.gif)
 
+Downloading and running the code
+===============================
+
+Download the latest `tty_sender` binary [release](https://github.com/elisescu/tty-share/releases),
+and run it using a demo server instance at tty-share.elisescu.com:
+```
+tty_sender --server tty-share.elisescu.com:7654
+```
+If you wanna keep using it, you can also create an alias and add it to your bash startup file
+(.profile or .bashrc): `alias tty-share='tty_sender  --server tty-share.elisescu.com:7654'`
+
 Building and running the code
 =============================
 
@@ -25,14 +36,14 @@ cd -
 make all # builds both the sender and server
 ```
 
-### Run the server
+### Run a development server
 ```
 make runs
 ```
 Will run the server on the localhost.
 
 
-### Run the sender
+### Run a development sender
 ```
 make runc
 ```
