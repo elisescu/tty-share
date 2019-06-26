@@ -15,6 +15,7 @@ ReactDOM.render(
 
 var term = new Terminal({
     cursorBlink: true,
+    macOptionIsMeta: true,
 });
 
 var derivedKey = pbkdf2.pbkdf2Sync('password', 'salt', 4096, 32, 'sha256');
