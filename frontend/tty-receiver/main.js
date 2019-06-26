@@ -1,5 +1,5 @@
 import 'xterm/dist/xterm.css';
-import Terminal from 'xterm';
+import { Terminal } from 'xterm';
 import pbkdf2 from 'pbkdf2';
 
 import React from 'react';
