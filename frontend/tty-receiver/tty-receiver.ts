@@ -26,7 +26,14 @@ class TTYReceiver {
         this.xterminal.open(container);
 
         connection.onclose =  (evt: CloseEvent) => {
-           // TODO: notify the user that the session was closed.
+
+           this.xterminal.blur();
+           this.xterminal.setOption('cursorBlink', false);
+           this.xterminal.clear();
+
+           // TODO: notify the user properly, not with this miserable hack
+           let msg: any = this.containerElement.querySelector('#center-notification');
+           msg.style.visibility = 'visible';
         }
 
         this.xterminal.focus();
