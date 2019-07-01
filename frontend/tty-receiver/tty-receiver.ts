@@ -30,10 +30,7 @@ class TTYReceiver {
            this.xterminal.blur();
            this.xterminal.setOption('cursorBlink', false);
            this.xterminal.clear();
-
-           // TODO: notify the user properly, not with this miserable hack
-           let msg: any = this.containerElement.querySelector('#center-notification');
-           msg.style.visibility = 'visible';
+           this.xterminal.write('Session closed');
         }
 
         this.xterminal.focus();
