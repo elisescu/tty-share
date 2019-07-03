@@ -11,6 +11,7 @@ let mainConfig  = {
         path: __dirname + '/public/',
         filename: '[name].js',
     },
+    mode: develBuild ? 'development' : 'production',
     module: {
         rules: [
             {
@@ -43,8 +44,6 @@ let mainConfig  = {
 
 if (develBuild) {
     mainConfig.devtool = 'inline-source-map';
-} else {
-    mainConfig.plugins.push(new webpack.optimize.UglifyJsPlugin( { minimize: true }));
 }
 
 module.exports = mainConfig;
