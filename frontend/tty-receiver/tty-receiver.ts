@@ -45,7 +45,7 @@ class TTYReceiver {
 
             if (message.Type === "Write") {
                 let writeMsg = JSON.parse(msgData)
-                this.xterminal.write(base64.decode(writeMsg.Data))
+                this.xterminal.writeUtf8(base64.base64ToArrayBuffer(writeMsg.Data));
             }
 
             if (message.Type == "WinSize") {
