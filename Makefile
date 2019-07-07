@@ -1,5 +1,5 @@
-TTY_SERVER=tty_server
-TTY_SENDER=tty_sender
+TTY_SERVER=./out/tty-server
+TTY_SENDER=./out/tty-sender
 
 # We need to make sure the assets_bundle is in the list only onces in both these two special cases:
 # a) first time, when the assets_bundle.go is generated, and b) when it's already existing there,
@@ -24,15 +24,15 @@ tty-server/assets_bundle.go: $(TTY_SERVER_ASSETS)
 	go-bindata --prefix frontend/public/ -o $@ $^
 
 # We only care about creating release binaries for the sender side
-dist: frontend tty_sender.linux.zip tty_sender.osx.zip
+dist: frontend ./out/tty-sender.linux.zip ./out/tty-sender.osx.zip
 
 %.zip: %
 	zip $@ $^
 
-tty_sender.osx: $(TTY_SENDER_SRC) $(EXTRA_BUILD_DEPS)
+./out/tty-sender.osx: $(TTY_SENDER_SRC) $(EXTRA_BUILD_DEPS)
 	GOOS=darwin go build -o $@ $(TTY_SENDER_SRC)
 
-tty_sender.linux: $(TTY_SENDER_SRC) $(EXTRA_BUILD_DEPS)
+./out/tty-sender.linux: $(TTY_SENDER_SRC) $(EXTRA_BUILD_DEPS)
 	GOOS=linux go build -o $@ $(TTY_SENDER_SRC)
 
 frontend: FORCE
