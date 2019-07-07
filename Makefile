@@ -49,7 +49,7 @@ runs: $(TTY_SERVER)
 
 # Runs the sender, without TLS (no need for localhost testing)
 runc: $(TTY_SENDER)
-	./$(TTY_SENDER) --useTLS=false
+	./$(TTY_SENDER) --useTLS=false --server localhost:7654
 
 test:
 	@go test github.com/elisescu/tty-share/testing -v
