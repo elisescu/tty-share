@@ -29,8 +29,8 @@ type SessionTemplateModel struct {
 	WSPath    string
 }
 
-// TTYProxyServerConfig is used to configure the proxy server before it is started
-type TTYProxyServerConfig struct {
+// TTYServerConfig is used to configure the tty server before it is started
+type TTYServerConfig struct {
 	WebAddress       string
 	TTYSenderAddress string
 	ServerURL        string
@@ -40,16 +40,16 @@ type TTYProxyServerConfig struct {
 	FrontendPath string
 }
 
-// TTYProxyServer represents the instance of a proxy server
-type TTYProxyServer struct {
+// TTYServer represents the instance of a tty server
+type TTYServer struct {
 	httpServer           *http.Server
 	ttySendersListener   net.Listener
-	config               TTYProxyServerConfig
+	config               TTYServerConfig
 	activeSessions       map[string]*ttyShareSession
 	activeSessionsRWLock sync.RWMutex
 }
 
-func (server *TTYProxyServer) serveContent(w http.ResponseWriter, r *http.Request, name string) {
+func (server *TTYServer) serveContent(w http.ResponseWriter, r *http.Request, name string) {
 	// If a path to the frontend resources was passed, serve from there, otherwise, serve from the
 	// builtin bundle
 	if server.config.FrontendPath == "" {
@@ -81,9 +81,9 @@ func (server *TTYProxyServer) serveContent(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// NewTTYProxyServer creates a new instance
-func NewTTYProxyServer(config TTYProxyServerConfig) (server *TTYProxyServer) {
-	server = &TTYProxyServer{
+// NewTTYServer creates a new instance
+func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
+	server = &TTYServer{
 		config: config,
 	}
 	server.httpServer = &http.Server{
@@ -118,7 +118,7 @@ func getWSPath(sessionID string) string {
 	return "/ws/" + sessionID
 }
 
-func (server *TTYProxyServer) handleWebsocket(w http.ResponseWriter, r *http.Request) {
+func (server *TTYServer) handleWebsocket(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	sessionID := vars["sessionID"]
 	defer log.Debug("Finished WS connection for ", sessionID)
@@ -152,7 +152,7 @@ func (server *TTYProxyServer) handleWebsocket(w http.ResponseWriter, r *http.Req
 	session.HandleReceiver(newWSConnection(conn))
 }
 
-func (server *TTYProxyServer) handleSession(w http.ResponseWriter, r *http.Request) {
+func (server *TTYServer) handleSession(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	sessionID := vars["sessionID"]
 
@@ -197,19 +197,19 @@ func (server *TTYProxyServer) handleSession(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func addNewSession(server *TTYProxyServer, session *ttyShareSession) {
+func addNewSession(server *TTYServer, session *ttyShareSession) {
 	server.activeSessionsRWLock.Lock()
 	server.activeSessions[session.GetID()] = session
 	server.activeSessionsRWLock.Unlock()
 }
 
-func removeSession(server *TTYProxyServer, session *ttyShareSession) {
+func removeSession(server *TTYServer, session *ttyShareSession) {
 	server.activeSessionsRWLock.Lock()
 	delete(server.activeSessions, session.GetID())
 	server.activeSessionsRWLock.Unlock()
 }
 
-func getSession(server *TTYProxyServer, sessionID string) (session *ttyShareSession) {
+func getSession(server *TTYServer, sessionID string) (session *ttyShareSession) {
 	// TODO: move this in a better place
 	server.activeSessionsRWLock.RLock()
 	session = server.activeSessions[sessionID]
@@ -217,7 +217,7 @@ func getSession(server *TTYProxyServer, sessionID string) (session *ttyShareSess
 	return
 }
 
-func handleTTYSenderConnection(server *TTYProxyServer, conn net.Conn) {
+func handleTTYSenderConnection(server *TTYServer, conn net.Conn) {
 	defer conn.Close()
 
 	session := newTTYShareSession(conn, server.config.ServerURL)
@@ -236,7 +236,7 @@ func handleTTYSenderConnection(server *TTYProxyServer, conn net.Conn) {
 }
 
 // Listen starts listening on connections
-func (server *TTYProxyServer) Listen() (err error) {
+func (server *TTYServer) Listen() (err error) {
 	var wg sync.WaitGroup
 	runTLS := server.config.TLSCertFile != "" && server.config.TLSKeyFile != ""
 
@@ -282,7 +282,7 @@ func (server *TTYProxyServer) Listen() (err error) {
 }
 
 // Stop closes down the server
-func (server *TTYProxyServer) Stop() error {
+func (server *TTYServer) Stop() error {
 	log.Debug("Stopping the server")
 	err1 := server.httpServer.Close()
 	err2 := server.ttySendersListener.Close()

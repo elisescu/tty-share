@@ -21,14 +21,14 @@ func main() {
 	log := MainLogger
 	log.SetLevel(logrus.DebugLevel)
 
-	config := TTYProxyServerConfig{
+	config := TTYServerConfig{
 		WebAddress:       *webAddress,
 		TTYSenderAddress: *senderAddress,
 		ServerURL:        *url,
 		FrontendPath:     *frontendPath,
 	}
 
-	server := NewTTYProxyServer(config)
+	server := NewTTYServer(config)
 
 	// Install a signal and wait until we get Ctrl-C
 	c := make(chan os.Signal, 1)
