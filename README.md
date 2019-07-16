@@ -27,7 +27,17 @@ Web terminal: https://go.tty-share.com/s/J5U6FAwChWNP0I9VQ9XyPqVD6m6IpI8-sBLRiz9
 bash$
 ```
 
-## Building and running the code
+## Building `tty-sender` locally
+
+If you want to just build the tool that shares your terminal, and not the server, then simply do a
+
+```
+make out/tty-sender
+```
+
+This way you don't have to bother about the server side, nor about building the frontend, and you will get only the `tty-sender` cmd line tool, inside `out` folder.
+
+## Building and running everything
 
 For an easy deployment, the `tty-server` is by bundling by default all frontend resources inside the final binary. So in the end, there will be only one file to be copied and deployed. However, the frontend resources can also be served from a local folder, with a command line flag.
 
