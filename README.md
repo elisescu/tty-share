@@ -4,11 +4,11 @@ It is a very simple command line tool that gives remote access to a UNIX termina
 
 The most important part about it is that it requires **no setup** on the remote end. All I need to give remote access to the terminal (a bash/shell session) is the binary tool, and the remote person only needs to open a secret URL in their browser.
 
-The project consists of two command line utilities: `tty-sender` and `tty-server`.
+The project consists of two command line utilities: `tty-share` and `tty-server`.
 
-The `tty-sender` is used on the machine that wants to share the terminal, and it connects to the server to generate a secret URL, over which the terminal can be viewed in the browser.
+The `tty-share` is used on the machine that wants to share the terminal, and it connects to the server to generate a secret URL, over which the terminal can be viewed in the browser.
 
-The server runs at [tty-share.com](https://tty-share.com), so you only need the `tty-server1` binary if you want to host it yourself.
+The server runs at [tty-share.com](https://tty-share.com), so you only need the `tty-server` binary if you want to host it yourself.
 
 ![demo](doc/demo.gif)
 
@@ -18,24 +18,24 @@ The documentation is very poor now. More will follow. [This](doc/architecture.md
 
 ## Running
 
-Download the latest `tty-sender` binary [release](https://github.com/elisescu/tty-share/releases), and run it:
+Download the latest `tty-share` binary [release](https://github.com/elisescu/tty-share/releases), and run it:
 
 ```
-bash$ tty-sender
+bash$ tty-share
 Web terminal: https://go.tty-share.com/s/J5U6FAwChWNP0I9VQ9XyPqVD6m6IpI8-sBLRiz98XMA=
 
 bash$
 ```
 
-## Building `tty-sender` locally
+## Building `tty-share` locally
 
 If you want to just build the tool that shares your terminal, and not the server, then simply do a
 
 ```
-make out/tty-sender
+make out/tty-share
 ```
 
-This way you don't have to bother about the server side, nor about building the frontend, and you will get only the `tty-sender` cmd line tool, inside `out` folder.
+This way you don't have to bother about the server side, nor about building the frontend, and you will get only the `tty-share` cmd line tool, inside `out` folder.
 
 ## Building and running everything
 
@@ -65,7 +65,7 @@ make runc
 Will run the sender and connect it to the server running on the local host (so the above command has
 to be ran first).
 
-For more info, on how to run, see the Makefile, or the help of the two binaries (`tty-sender` and `tty_receiver`)
+For more info, on how to run, see the Makefile, or the help of the two binaries (`tty-share` and `tty_receiver`)
 
 The project didn't follow the typical way of building go applications, because everything is put in one single project and package, for the ease of development, and also because the bundle containing the frontend has to be built as well. Perhaps there's a better way, but this works for now.
 
@@ -73,7 +73,7 @@ The project didn't follow the typical way of building go applications, because e
 
 ## TLS and HTTPS
 
-At the moment the `tty-sender` supports connecting over a TLS connection to the server, but the server doesn't have that implemented yet. However, the server can easily run behind a proxy which can take care of encrypting the connections from the senders and receivers (doing both TLS and HTTPS), without the server knowing about it.
+At the moment the `tty-share` supports connecting over a TLS connection to the server, but the server doesn't have that implemented yet. However, the server can easily run behind a proxy which can take care of encrypting the connections from the senders and receivers (doing both TLS and HTTPS), without the server knowing about it.
 
 The server at [tty-share](https://tty-share.com) is using both TLS and https for both sides, relying on nginx reverse proxy.
 
@@ -84,11 +84,11 @@ However, the `tty-server` should maybe also have native support for being able t
 There are several improvements, and additions that can be done further:
   * Update and write more tests.
   * Add support for listening on sender connections over TLS.
-  * React on the `tty-receiver` window size as well. For now, the size of the terminal window is decided by the `tty-sender`, but perhaps both the sender and receiver should have a say in this.
+  * React on the `tty-receiver` window size as well. For now, the size of the terminal window is decided by the `tty-share`, but perhaps both the sender and receiver should have a say in this.
   * Read only sessions, where the `tty_receiver` side can only watch, and cannot interact with the terminal session.
   * Command line `tty_receiver` can be implemented as well, without the need of a browser.
   * End-to-end encryption. Right now, the server can see what messages the sender and receiver are exchanging, but an end-to-end encryption layer can be built on top of this. It has been thought from the beginning, but it's just not implemented. The terminal IO messages are packed in protocol messages, and the payload can be easily encrypted with a shared key derived from a password that only the sender and receiver know.
-  * Notify the `tty-sender` user when a `tty-receiver` got connected (when the remote person opened the URL in their browser).
+  * Notify the `tty-share` user when a `tty-receiver` got connected (when the remote person opened the URL in their browser).
   * Many other
 
 

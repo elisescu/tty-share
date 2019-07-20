@@ -9,3 +9,4 @@ tty_sender*
 tty_server*
 tmp-*
 tty-server/assets_bundle.go
+out/

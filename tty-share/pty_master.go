@@ -30,7 +30,7 @@ func (pty *ptyMaster) Start(command string, args []string, winChangedCB onWindow
 	pty.windowChangedCB = winChangedCB
 
 	// Save the initial state of the terminal, before making it RAW. Note that this terminal is the
-	// terminal under which the tty_sender command has been started, and it's identified via the
+	// terminal under which the tty-share command has been started, and it's identified via the
 	// stdin file descriptor (0 in this case)
 	// We need to make this terminal RAW so that when the command (passed here as a string, a shell
 	// usually), is receiving all the input, including the special characters:
@@ -117,7 +117,7 @@ func onWindowChanges(winChangedCb func(cols, rows int)) {
 	winChangedSig := make(chan os.Signal, 1)
 	signal.Notify(winChangedSig, syscall.SIGWINCH)
 	// The interface for getting window changes from the pty slave to its process, is via signals.
-	// In our case here, the tty_sender command (built in this project) is the client, which should
+	// In our case here, the tty-share command (built in this project) is the client, which should
 	// get notified if the terminal window in which it runs has changed. To get that, it needs to
 	// register for SIGWINCH signal, which is used by the kernel to tell process that the window
 	// has changed its dimentions.

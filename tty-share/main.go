@@ -76,7 +76,7 @@ func main() {
 	// Wait until the user presses Enter
 	fmt.Printf("Web terminal: %s\n\n\r", reply.URLWebReadWrite)
 	//TODO: if the user on the remote side presses keys, and so messages are sent back to the
-	// tty_sender, they will be delivered all at once, after Enter has been pressed. Fix that.
+	// tty sender, they will be delivered all at once, after Enter has been pressed. Fix that.
 
 	ptyMaster := ptyMasterNew()
 	ptyMaster.Start(*commandName, strings.Fields(*commandArgs), func(cols, rows int) {
