@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/elisescu/tty-share.svg?branch=master)](https://travis-ci.com/elisescu/tty-share)
+
 # tty-share
 
 It is a very simple command line tool that gives remote access to a UNIX terminal session. It's using the [PTY](https://en.wikipedia.org/wiki/Pseudoterminal) system, so it should work on any *UNIX* system (Linux, OSX). Because it's written in GO, the tool will be a single binary, with no dependencies, which will also work on your ARM Raspberry Pi.
