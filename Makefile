@@ -1,3 +1,4 @@
+DEPS=github.com/elisescu/pty github.com/sirupsen/logrus golang.org/x/crypto/ssh/terminal github.com/gorilla/mux github.com/gorilla/websocket
 DEST_DIR=./out
 TTY_SERVER=$(DEST_DIR)/tty-server
 TTY_SHARE=$(DEST_DIR)/tty-share
@@ -13,8 +14,11 @@ COMMON_SRC=$(wildcard ./common/*go)
 TTY_SERVER_ASSETS=$(wildcard frontend/public/*)
 
 ## tty-share command (the client/sender side)
-all: $(TTY_SHARE)  # do this by default, so no need to mess up with building the frontend
+all: get-deps $(TTY_SHARE)  # do this by default, so no need to mess up with building the frontend
 	@echo "All done"
+
+get-deps:
+	go get $(DEPS)
 
 # Building the server and tty-share
 $(TTY_SERVER): $(TTY_SERVER_SRC) $(COMMON_SRC)
