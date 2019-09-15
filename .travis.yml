@@ -1,4 +1,11 @@
 language: go
 
 go:
-- 1.12.x
+  - 1.12.x
+
+node_js:
+  - 12.4.0
+
+# make frontend all won't work. The frontend assets have to be already built at the time of
+# evaluating the Makefile first time, so for now I do it in two turns.
+script: make frontend && make all

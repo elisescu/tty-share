@@ -1,4 +1,4 @@
-DEPS=github.com/elisescu/pty github.com/sirupsen/logrus golang.org/x/crypto/ssh/terminal github.com/gorilla/mux github.com/gorilla/websocket
+DEPS=github.com/elisescu/pty github.com/sirupsen/logrus golang.org/x/crypto/ssh/terminal github.com/gorilla/mux github.com/gorilla/websocket github.com/go-bindata/go-bindata/...
 DEST_DIR=./out
 TTY_SERVER=$(DEST_DIR)/tty-server
 TTY_SHARE=$(DEST_DIR)/tty-share
@@ -36,7 +36,7 @@ tty-server/assets_bundle.go: $(TTY_SERVER_ASSETS)
 	zip $@ $^
 
 frontend: force
-	cd frontend && npm run build && cd -
+	cd frontend && npm install && npm run build && cd -
 force:
 
 # Other different targets
