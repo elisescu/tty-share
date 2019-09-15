@@ -13,19 +13,21 @@ TTY_SHARE_SRC=$(wildcard ./tty-share/*.go)
 COMMON_SRC=$(wildcard ./common/*go)
 TTY_SERVER_ASSETS=$(wildcard frontend/public/*)
 
-## tty-share command (the client/sender side)
-all: get-deps $(TTY_SHARE)  # do this by default, so no need to mess up with building the frontend
+
+## Keep this as the first and default target, so no need to mess up with building the frontend&rest if the server side is not needed
+$(TTY_SHARE): get-deps $(TTY_SHARE_SRC) $(COMMON_SRC)
+	go build -o $@ $(TTY_SHARE_SRC)
+
+## Build both the server and the tty-share
+all: get-deps $(TTY_SHARE) $(TTY_SERVER)
 	@echo "All done"
 
 get-deps:
 	go get $(DEPS)
 
 # Building the server and tty-share
-$(TTY_SERVER): $(TTY_SERVER_SRC) $(COMMON_SRC)
+$(TTY_SERVER): get-deps $(TTY_SERVER_SRC) $(COMMON_SRC)
 	go build -o $@ $(TTY_SERVER_SRC)
-
-$(TTY_SHARE): $(TTY_SHARE_SRC) $(COMMON_SRC)
-	go build -o $@ $(TTY_SHARE_SRC)
 
 tty-server/assets_bundle.go: $(TTY_SERVER_ASSETS)
 	go-bindata --prefix frontend/public/ -o $@ $^
@@ -54,8 +56,6 @@ clean:
 	rm -fr out/
 	rm -fr frontend/public
 	@echo "Cleaned"
-
-## Server release binarires
 
 ## Development helper targets
 ### Runs the server, without TLS/HTTPS (no need for localhost testing)

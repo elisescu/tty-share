@@ -39,6 +39,8 @@ make out/tty-share
 
 This way you don't have to bother about the server side, nor about building the frontend, and you will get only the `tty-share` cmd line tool, inside `out` folder.
 
+For cross-compilation you can use the GO building [environment variables](https://golang.org/doc/install/source#environment). For example, to build the `tty-share` for raspberrypi, you can do `GOOS=linux GOARCH=arm make out/tty-share`.
+
 ## Building and running everything
 
 For an easy deployment, the `tty-server` is by bundling by default all frontend resources inside the final binary. So in the end, there will be only one file to be copied and deployed. However, the frontend resources can also be served from a local folder, with a command line flag.
@@ -50,7 +52,7 @@ nvm use
 npm install
 npm run build # builds the frontend
 cd -
-make all # builds both the sender and server
+make all # builds both the sender and server. Check the Makefile for more details
 ```
 
 ### Run a development server
