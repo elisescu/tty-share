@@ -39,7 +39,7 @@ make out/tty-share
 
 This way you don't have to bother about the server side, nor about building the frontend, and you will get only the `tty-share` cmd line tool, inside `out` folder.
 
-For cross-compilation you can use the GO building [environment variables](https://golang.org/doc/install/source#environment). For example, to build the `tty-share` for raspberrypi, you can do `GOOS=linux GOARCH=arm make out/tty-share`.
+For cross-compilation you can use the GO building [environment variables](https://golang.org/doc/install/source#environment). For example, to build the `tty-share` for raspberrypi, you can do `GOOS=linux GOARCH=arm GOARM=6 make out/tty-share` (you can check your raspberrypi arch with `uname -a`).
 
 ## Building and running everything
 
