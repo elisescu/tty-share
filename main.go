@@ -11,7 +11,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/elisescu/tty-share/common"
 	logrus "github.com/sirupsen/logrus"
 )
 
@@ -59,8 +58,8 @@ func main() {
 		}
 	}
 
-	serverConnection := common.NewTTYProtocolConn(rawConnection)
-	reply, err := serverConnection.InitSender(common.SenderSessionInfo{
+	serverConnection := NewTTYProtocolConn(rawConnection)
+	reply, err := serverConnection.InitSender(SenderSessionInfo{
 		Salt:              "salt",
 		PasswordVerifierA: "PV_A",
 	})
@@ -107,13 +106,13 @@ func main() {
 				break
 			}
 
-			if msg.Type == common.MsgIDWrite {
-				var msgWrite common.MsgTTYWrite
+			if msg.Type == MsgIDWrite {
+				var msgWrite MsgTTYWrite
 				json.Unmarshal(msg.Data, &msgWrite)
 				ptyMaster.Write(msgWrite.Data[:msgWrite.Size])
 			}
-			if msg.Type == common.MsgIDSenderNewReceiverConnected {
-				var msgReceiverConnected common.MsgTTYSenderNewReceiverConnected
+			if msg.Type == MsgIDSenderNewReceiverConnected {
+				var msgReceiverConnected MsgTTYSenderNewReceiverConnected
 				json.Unmarshal(msg.Data, &msgReceiverConnected)
 
 				ptyMaster.Refresh()

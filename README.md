@@ -6,11 +6,11 @@ It is a very simple command line tool that gives remote access to a UNIX termina
 
 The most important part about it is that it requires **no setup** on the remote end. All I need to give remote access to the terminal (a bash/shell session) is the binary tool, and the remote person only needs to open a secret URL in their browser.
 
-The project consists of two command line utilities: `tty-share` and `tty-server`.
+The project consists of two command line utilities: `tty-share` and `tty-server`. The server side has been moved to [github.com/elisescu/tty-server](https://github.com/elisescu/tty-server) repo, so it's easier to build the `tty-share` tool separately.
 
 The `tty-share` is used on the machine that wants to share the terminal, and it connects to the server to generate a secret URL, over which the terminal can be viewed in the browser.
 
-The server runs at [tty-share.com](https://tty-share.com), so you only need the `tty-server` binary if you want to host it yourself.
+An instance of the server runs at [tty-share.com](https://tty-share.com), so you only need the `tty-server` binary if you want to host it yourself.
 
 ![demo](doc/demo.gif)
 
@@ -34,54 +34,16 @@ bash$
 If you want to just build the tool that shares your terminal, and not the server, then simply do a
 
 ```
-make out/tty-share
+go get github.com/elisescu/tty-share
 ```
-
-This way you don't have to bother about the server side, nor about building the frontend, and you will get only the `tty-share` cmd line tool, inside `out` folder.
 
 For cross-compilation you can use the GO building [environment variables](https://golang.org/doc/install/source#environment). For example, to build the `tty-share` for raspberrypi, you can do `GOOS=linux GOARCH=arm GOARM=6 make out/tty-share` (you can check your raspberrypi arch with `uname -a`).
 
-## Building and running everything
+## Security
 
-For an easy deployment, the `tty-server` is by bundling by default all frontend resources inside the final binary. So in the end, there will be only one file to be copied and deployed. However, the frontend resources can also be served from a local folder, with a command line flag.
+`tty-share` connects over a TLS connection to the server, which uses a proxy for the SSL termination, and the browser terminal is served over HTTPS. The communication on both sides is encrypted and secured, in the same way as other similar tools are doing it (e.g. tmate, VSC, etc).
 
-### Build all
-``` 
-cd frontend
-nvm use
-npm install
-npm run build # builds the frontend
-cd -
-make all # builds both the sender and server. Check the Makefile for more details
-```
-
-### Run a development server
-```
-make runs
-```
-Will run the server on the localhost.
-
-
-### Run a development sender
-```
-make runc
-```
-Will run the sender and connect it to the server running on the local host (so the above command has
-to be ran first).
-
-For more info, on how to run, see the Makefile, or the help of the two binaries (`tty-share` and `tty_receiver`)
-
-The project didn't follow the typical way of building go applications, because everything is put in one single project and package, for the ease of development, and also because the bundle containing the frontend has to be built as well. Perhaps there's a better way, but this works for now.
-
-
-
-## TLS and HTTPS
-
-At the moment the `tty-share` supports connecting over a TLS connection to the server, but the server doesn't have that implemented yet. However, the server can easily run behind a proxy which can take care of encrypting the connections from the senders and receivers (doing both TLS and HTTPS), without the server knowing about it.
-
-The server at [tty-share](https://tty-share.com) is using both TLS and https for both sides, relying on nginx reverse proxy.
-
-However, the `tty-server` should maybe also have native support for being able to listen on TLS connections from the sender as well. This can easily be added in the future.
+However, end-to-end encryption is still desired, so nothing but the sender and receiver can decrypt the data passed around.
 
 ## TODO
 
