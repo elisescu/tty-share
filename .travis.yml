@@ -3,4 +3,7 @@ language: go
 go:
   - 1.12.x
 
-script: go build
+before_install:
+  - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+
+script: dep ensure && go build
