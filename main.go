@@ -17,7 +17,10 @@ import (
 var log = logrus.New()
 
 func main() {
-	commandName := flag.String("command", "bash", "The command to run")
+	commandName := flag.String("command", os.Getenv("SHELL"), "The command to run")
+	if *commandName == "" {
+		*commandName = "bash"
+	}
 	commandArgs := flag.String("args", "", "The command arguments")
 	logFileName := flag.String("logfile", "-", "The name of the file to log")
 	useTLS := flag.Bool("useTLS", true, "Use TLS to connect to the server")
