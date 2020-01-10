@@ -15,6 +15,7 @@ import (
 )
 
 var log = logrus.New()
+var version string = "0.0.0"
 
 func main() {
 	commandName := flag.String("command", os.Getenv("SHELL"), "The command to run")
@@ -25,7 +26,13 @@ func main() {
 	logFileName := flag.String("logfile", "-", "The name of the file to log")
 	useTLS := flag.Bool("useTLS", true, "Use TLS to connect to the server")
 	server := flag.String("server", "go.tty-share.com:7654", "tty-server address")
+	versionFlag := flag.Bool("version", false, "Print the tty-share version")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("%s\n", version)
+		return
+	}
 
 	log.Level = logrus.ErrorLevel
 	if *logFileName != "-" {
