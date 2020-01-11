@@ -45,7 +45,10 @@ func main() {
 		log.Out = logFile
 	}
 
-	// TODO: check we are running inside a tty environment, and exit if not
+	if !isStdinTerminal() {
+		fmt.Printf("Input not a tty\n")
+		os.Exit(1)
+	}
 
 	var rawConnection io.ReadWriteCloser
 	if *useTLS {

@@ -26,6 +26,10 @@ func ptyMasterNew() *ptyMaster {
 	return &ptyMaster{}
 }
 
+func isStdinTerminal() bool {
+	return terminal.IsTerminal(0)
+}
+
 func (pty *ptyMaster) Start(command string, args []string, winChangedCB onWindowChangesCB) (err error) {
 	pty.windowChangedCB = winChangedCB
 
