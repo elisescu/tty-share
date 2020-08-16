@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -16,30 +15,20 @@ import (
 
 var log = logrus.New()
 var version string = "0.0.0"
+var config = TTYShareConfig{ // default configuration options
+	LogFileName: "-",
+	Server:      "go.tty-share.com:7654",
+	UseTLS:      false,
+}
 
 func main() {
-	commandName := flag.String("command", os.Getenv("SHELL"), "The command to run")
-	if *commandName == "" {
-		*commandName = "bash"
-	}
-	commandArgs := flag.String("args", "", "The command arguments")
-	logFileName := flag.String("logfile", "-", "The name of the file to log")
-	useTLS := flag.Bool("useTLS", true, "Use TLS to connect to the server")
-	server := flag.String("server", "go.tty-share.com:7654", "tty-server address")
-	versionFlag := flag.Bool("version", false, "Print the tty-share version")
-	flag.Parse()
-
-	if *versionFlag {
-		fmt.Printf("%s\n", version)
-		return
-	}
-
+	config.Load()
 	log.Level = logrus.ErrorLevel
-	if *logFileName != "-" {
-		fmt.Printf("Writing logs to: %s\n", *logFileName)
-		logFile, err := os.Create(*logFileName)
+	if config.LogFileName != "-" {
+		fmt.Printf("Writing logs to: %s\n", config.LogFileName)
+		logFile, err := os.Create(config.LogFileName)
 		if err != nil {
-			fmt.Printf("Can't open %s for writing logs\n", *logFileName)
+			fmt.Printf("Can't open %s for writing logs\n", config.LogFileName)
 		}
 		log.Level = logrus.DebugLevel
 		log.Out = logFile
@@ -51,22 +40,22 @@ func main() {
 	}
 
 	var rawConnection io.ReadWriteCloser
-	if *useTLS {
+	if config.UseTLS {
 		roots, err := x509.SystemCertPool()
 		if err != nil {
-			fmt.Printf("Cannot connect to the server (%s): %s", *server, err.Error())
+			fmt.Printf("Cannot connect to the server (%s): %s", config.Server, err.Error())
 			return
 		}
-		rawConnection, err = tls.Dial("tcp", *server, &tls.Config{RootCAs: roots})
+		rawConnection, err = tls.Dial("tcp", config.Server, &tls.Config{RootCAs: roots})
 		if err != nil {
-			fmt.Printf("Cannot connect (TLS) to the server (%s): %s", *server, err.Error())
+			fmt.Printf("Cannot connect (TLS) to the server (%s): %s", config.Server, err.Error())
 			return
 		}
 	} else {
 		var err error
-		rawConnection, err = net.Dial("tcp", *server)
+		rawConnection, err = net.Dial("tcp", config.Server)
 		if err != nil {
-			fmt.Printf("Cannot connect to the server (%s): %s", *server, err.Error())
+			fmt.Printf("Cannot connect to the server (%s): %s", config.Server, err.Error())
 			return
 		}
 	}
@@ -91,7 +80,7 @@ func main() {
 	// tty sender, they will be delivered all at once, after Enter has been pressed. Fix that.
 
 	ptyMaster := ptyMasterNew()
-	ptyMaster.Start(*commandName, strings.Fields(*commandArgs), func(cols, rows int) {
+	ptyMaster.Start(config.commandName, strings.Fields(config.commandArgs), func(cols, rows int) {
 		log.Infof("New window size: %dx%d", cols, rows)
 		serverConnection.SetWinSize(cols, rows)
 	})
