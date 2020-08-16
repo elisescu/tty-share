@@ -18,6 +18,7 @@ var version string = "0.0.0"
 var config = TTYShareConfig{ // default configuration options
 	LogFileName: "-",
 	Server:      "go.tty-share.com:7654",
+	ReadOnly:    false,
 	UseTLS:      false,
 }
 
@@ -108,7 +109,7 @@ func main() {
 				break
 			}
 
-			if msg.Type == MsgIDWrite {
+			if (msg.Type == MsgIDWrite) && !config.ReadOnly {
 				var msgWrite MsgTTYWrite
 				json.Unmarshal(msg.Data, &msgWrite)
 				ptyMaster.Write(msgWrite.Data[:msgWrite.Size])

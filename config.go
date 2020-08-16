@@ -15,6 +15,7 @@ type TTYShareConfig struct {
 	LogFileName    string `json:"logFileName"`
 	UseTLS         bool   `json:"useTLS"`
 	Server         string `json:"server"`
+	ReadOnly       bool   `json:"readonly"`
 	configFileName string
 	commandName    string
 	commandArgs    string
@@ -36,6 +37,7 @@ func (conf *TTYShareConfig) Load() {
 	flag.StringVar(&config.LogFileName, "logfile", config.LogFileName, "The name of the file to log")
 	flag.BoolVar(&config.UseTLS, "useTLS", config.UseTLS, "Use TLS to connect to the server")
 	flag.StringVar(&config.Server, "server", config.Server, "tty-server address")
+	flag.BoolVar(&config.ReadOnly, "readOnly", config.ReadOnly, "Share as a read only")
 	flag.Parse()
 
 	if conf.versionFlag {
