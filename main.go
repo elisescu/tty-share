@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-
 	"strings"
 
+	"github.com/elisescu/tty-share/proxy"
 	"github.com/elisescu/tty-share/server"
 	ttyServer "github.com/elisescu/tty-share/server"
 	log "github.com/sirupsen/logrus"
@@ -16,16 +16,23 @@ import (
 
 var version string = "0.0.0"
 
-func createServer(frontListenAddress string, frontendPath string, tty io.Writer) *server.TTYServer {
+func createServer(frontListenAddress string, frontendPath string, tty io.Writer, sessionID string) *server.TTYServer {
 	config := ttyServer.TTYServerConfig{
 		FrontListenAddress: frontListenAddress,
 		FrontendPath:       frontendPath,
 		TTYWriter:          tty,
+		SessionID:          sessionID,
 	}
 
 	server := ttyServer.NewTTYServer(config)
-	log.Info("Listening on address: http://", config.FrontListenAddress)
 	return server
+}
+
+type nilWriter struct {
+}
+
+func (nw *nilWriter) Write(data []byte) (int, error) {
+	return len(data), nil
 }
 
 func main() {
@@ -35,9 +42,12 @@ func main() {
 	}
 	commandArgs := flag.String("args", "", "The command arguments")
 	logFileName := flag.String("logfile", "-", "The name of the file to log")
-	listenAddress := flag.String("listen", "localhost:8080", "tty-server address")
+	listenAddress := flag.String("listen", "localhost:8000", "tty-server address")
 	versionFlag := flag.Bool("version", false, "Print the tty-share version")
 	frontendPath := flag.String("frontend_path", "", "The path to the frontend resources. By default, these resources are included in the server binary, so you only need this path if you don't want to use the bundled ones.")
+	proxyServerAddress := flag.String("proxy_address", "localhost:9000", "Address of the proxy for public facing connections")
+	readOnly := flag.Bool("readonly", false, "Start a read only session")
+	publicSession := flag.Bool("public", false, "Create a public session")
 	flag.Parse()
 
 	if *versionFlag {
@@ -61,15 +71,35 @@ func main() {
 		os.Exit(1)
 	}
 
+	sessionID := "local"
+	if *publicSession {
+		proxy, err := proxy.NewProxyConnection(*listenAddress, *proxyServerAddress)
+		if err != nil {
+			fmt.Printf("Can't connect to the proxy: %s\n", err.Error())
+			return
+		}
+
+		go proxy.RunProxy()
+		sessionID = proxy.SessionID
+		fmt.Printf("%s\n", proxy.PublicURL)
+		defer proxy.Stop()
+	}
+
 	// Display the session information to the user, before showing any output from the command.
 	// Wait until the user presses Enter
-	fmt.Printf("Web terminal: http://%s\n\n\rPress Enter to continue!\n", *listenAddress)
+	fmt.Printf("http://%s/local/\n", *listenAddress)
+	fmt.Printf("Press Enter to continue!\n")
 	bufio.NewReader(os.Stdin).ReadString('\n')
 
 	ptyMaster := ptyMasterNew()
 	ptyMaster.Start(*commandName, strings.Fields(*commandArgs))
 
-	server := createServer(*listenAddress, *frontendPath, ptyMaster)
+	var writer io.Writer = ptyMaster
+	if *readOnly {
+		writer = &nilWriter{}
+	}
+
+	server := createServer(*listenAddress, *frontendPath, writer, sessionID)
 	if cols, rows, e := ptyMaster.GetWinSize(); e == nil {
 		server.WindowSize(cols, rows)
 	}
@@ -82,9 +112,12 @@ func main() {
 	mw := io.MultiWriter(os.Stdout, server)
 
 	go func() {
-		server.Run(func (clientAddr string){
+		err := server.Run(func(clientAddr string) {
 			ptyMaster.Refresh()
 		})
+		if err != nil {
+			log.Error(err.Error())
+		}
 	}()
 
 	go func() {
@@ -102,4 +135,5 @@ func main() {
 	ptyMaster.Wait()
 	fmt.Printf("tty-share finished.\n\r")
 	server.Stop()
+
 }
