@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Terminal</title>
+    </head>
+    <body>
+        <div id="terminal"></div>
+        <div id="settings"></div>
+        <script type="text/javascript">
+            window.ttyInitialData = {
+                sessionID: {{.SessionID}},
+                salt: {{.Salt}},
+                wsPath: {{.WSPath}}
+            }
+            console.log("Initial data", window.ttyInitialData)
+        </script>
+        <script src="/static/tty-receiver.js"></script>
+    </body>
+</html>
+
