@@ -1,0 +1,22 @@
+{
+  "name": "tty-share",
+  "version": "1.0.0",
+  "description": "",
+  "main": "",
+  "scripts": {
+    "watch": "TTY_SHARE_ENV=development webpack --watch",
+    "build": "TTY_SHARE_ENV=production webpack"
+  },
+  "author": "elisescu",
+  "license": "elisescu",
+  "dependencies": {
+    "copy-webpack-plugin": "^6.0.0",
+    "css-loader": "^3.6.0",
+    "style-loader": "^0.23.1",
+    "ts-loader": "^6.2.2",
+    "typescript": "^3.9.7",
+    "webpack": "^4.44.2",
+    "webpack-cli": "^3.3.12",
+    "xterm": "^4.9.0"
+  }
+}
