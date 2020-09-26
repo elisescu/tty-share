@@ -40,6 +40,8 @@ class TTYReceiver {
         this.xterminal.setOption('fontSize', newFontSize);
 
         connection.onmessage = (ev: MessageEvent) => {
+          console.log("Got message: ", ev.data);
+
             let message = JSON.parse(ev.data)
             let msgData = base64.decode(message.Data)
 

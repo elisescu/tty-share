@@ -1,24 +1,28 @@
-High level architecture
-=======================
+# High level flow
 
+## Direct terminal sharing
 
-```
-     Alice
+No proxy needed. `tty-share` will start a command, and be ready to serve it's output and input over WS connections.
 
-+-tty-share---------------+              +-tty-server----------------+                 Bob
-|                         |              |                           | https://    +------------+
-| +------+       +-----+  |     TLS      | +------+     +---------+  | wss://      |tty-receiver|
-| | bash | <-+-> |proto| <---------------> | proto| <-> | session | +-----+------> |     1      |
-| +------+   |   +-----+  |              | +------+     +---------+  |    |        +------------+
-|            |            |              |                           |    |
-|            +-> pty      |              +---------------------------+    |        +------------+
-+-------------------------+                                               +------> |tty-receiver|
-                                                                                   |     2      |
-                                                                                   +------------+
-```
+## Proxy terminal sharing
 
-Alice wants to share a terminal session with Bob, so she starts `tty-share` on her machine, inside the terminal. `tty-share` then connects to the `tty-server` and starts inside a `bash` process. It then puts the terminal in which it was started in RAW mode, and the stdin and stdout are multiplexed to/from the `bash` process it started, and the remote connection to the `tty-server`. On the server side, a session is created, which connects the `tty-share` connection with the future `tty-receiver` instances, running in the browser. The `tty-receiver` runs inside the browser, on top of [xterm.js](https://xtermjs.org/), and is served by the server, via a unique session URL. Alice has to send this unique URL to Bob.
+- the `tty-share` opens a TCP connection to the `tty-proxy`
+- the `tty-proxy` proxy accepts the connection, generates a session ID, and sends it back to `tty-share`
+  - there is now a direct connection between the two
+  - a session ID to map any web connections to the `tty-share` side
 
-Once the connection is established, Bob can then interact inside the browser with the `bash` session started by Alice. When Bob presses, for example, the key `a`, this is detected by `xterm.js` and sent via a websockets connection to the server side. From there, it is sent to the `tty-share` which sends it to the pseudo terminal attached to the `bash` process started inside `tty-share`. Then character `a` is received via the standard output of the `bash` command, and is sent from there both to the standard output of the `tty-share`, so Alice can see it, and also to the `tty-receiver` (via the server), so Bob can see it too.
+- `tty-share` gets http requests:
+  - `/` (direct, from a listening server): serves the `index.html` - templated for direct requests (e..g: `<script src="/static/tty-receiver.js"></script>`)
+  - `/` (via the `tty-proxy` TCP connection): serves the `index.html` - templated for the respective session (it already has the session). (e.g.: `<script src="<id>/static/tty-receiver.js"></script>`)
+  - `/ws/` (direct, from the listening server): accepts a WS connection and connects it to the command opened
+  - `/ws/` (via the `tty-proxy` TCP connection): accepts a WS connection and connects it to the command opened
 
-More specific details on how this is implemented, can be seen in the source code of the `tty-share`.
+- `tty-proxy` gets HTTP requests:
+  - `/s/<id>/*` - builds a HTTP request forwards it to the TCP connection it has to the `tty-share` for that `<id>`
+  - `/ws/<id>` - forwards the WS connection to the `tty-share`, over the *same* TCP connection as above
+
+- over the same TCP connection, we have to pass multiple requests + a WS connection
+  - https://godoc.org/github.com/hashicorp/yamux
+  - https://godoc.org/github.com/soheilhy/cmux#pkg-examples
+
+x

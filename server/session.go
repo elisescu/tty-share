@@ -1,62 +1,31 @@
-package main
+package server
 
 import (
 	"container/list"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
-	"net"
+
+	"io"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
-type sessionInfo struct {
-	ID              string
-	URLWebReadWrite string
-}
-
 type ttyShareSession struct {
-	sessionID              string
-	serverURL              string
 	mainRWLock             sync.RWMutex
-	ttySenderConnection    *TTYProtocolConn
 	ttyReceiverConnections *list.List
 	isAlive                bool
-	lastWindowSizeMsg      MsgAll
+	lastWindowSizeMsg      MsgTTYWinSize
+	ttyWriter              io.Writer
 }
 
-func generateNewSessionID() string {
-	binID := make([]byte, 32)
-	_, err := rand.Read(binID)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return base64.URLEncoding.EncodeToString([]byte(binID))
-}
-
-func newTTYShareSession(conn net.Conn, serverURL string) *ttyShareSession {
-	sessionID := generateNewSessionID()
+func newTTYShareSession(ttyWriter io.Writer) *ttyShareSession {
 
 	ttyShareSession := &ttyShareSession{
-		sessionID:              sessionID,
-		serverURL:              serverURL,
-		ttySenderConnection:    NewTTYProtocolConn(conn),
 		ttyReceiverConnections: list.New(),
+		ttyWriter:              ttyWriter,
 	}
 
 	return ttyShareSession
-}
-
-func (session *ttyShareSession) InitSender() error {
-	_, err := session.ttySenderConnection.InitServer(ServerSessionInfo{
-		URLWebReadWrite: session.serverURL + "/s/" + session.GetID(),
-	})
-	return err
-}
-
-func (session *ttyShareSession) GetID() string {
-	return session.sessionID
 }
 
 func copyList(l *list.List) *list.List {
@@ -67,67 +36,62 @@ func copyList(l *list.List) *list.List {
 	return newList
 }
 
-func (session *ttyShareSession) handleSenderMessageLock(msg MsgAll) {
-	switch msg.Type {
-	case MsgIDWinSize:
-		// Save the last known size of the window so we pass it to new receivers, and then
-		// fallthrough. We save the WinSize message as we get it, since we send it anyways
-		// to the receivers, packed into the same protocol
-		session.mainRWLock.Lock()
-		session.lastWindowSizeMsg = msg
-		session.mainRWLock.Unlock()
-		fallthrough
-	case MsgIDWrite:
-		data, _ := json.Marshal(msg)
-		session.forEachReceiverLock(func(rcvConn *TTYProtocolConn) bool {
-			rcvConn.WriteRawData(data)
-			return true
-		})
+func (session *ttyShareSession) WindowSize(cols, rows int) (err error) {
+	msg := MsgTTYWinSize{
+		Cols: cols,
+		Rows: rows,
 	}
-}
 
-// Will run on the ttySendeConnection go routine (e.g.: in the TCP connection routine)
-func (session *ttyShareSession) HandleSenderConnection() {
 	session.mainRWLock.Lock()
-	session.isAlive = true
-	senderConnection := session.ttySenderConnection
+	session.lastWindowSizeMsg = msg
 	session.mainRWLock.Unlock()
 
-	for {
-		msg, err := senderConnection.ReadMessage()
-		if err != nil {
-			log.Debugf("TTYSender connnection finished withs with error: %s", err.Error())
-			break
+	data, _ := MarshalMsg(msg)
+
+	session.forEachReceiverLock(func(rcvConn *TTYProtocolWriter) bool {
+		_, e := rcvConn.WriteRawData(data)
+		if e != nil {
+			err = e
 		}
-		session.handleSenderMessageLock(msg)
+		return true
+	})
+	return
+}
+
+func (session *ttyShareSession) Write(buff []byte) (written int, err error) {
+	msg := MsgTTYWrite{
+		Data: buff,
+		Size: len(buff),
 	}
 
-	// Close the connection to all the receivers
-	log.Debugf("Closing all receiver connection")
-	session.forEachReceiverLock(func(recvConn *TTYProtocolConn) bool {
-		log.Debugf("Closing receiver connection")
-		recvConn.Close()
+	data, _ := MarshalMsg(msg)
+
+	log.Debugf("Writing %s\n", string(buff))
+	session.forEachReceiverLock(func(rcvConn *TTYProtocolWriter) bool {
+		_, e := rcvConn.WriteRawData(data)
+		if e != nil {
+			err = e
+		}
 		return true
 	})
 
-	// TODO: clear here the list of receiver
-	session.mainRWLock.Lock()
-	session.isAlive = false
-	session.mainRWLock.Unlock()
+	// TODO: fix this
+	written = len(buff)
+	return
 }
 
 // Runs the callback cb for each of the receivers in the list of the receivers, as it was when
 // this function was called. Note that there might be receivers which might have lost
 // the connection since this function was called.
 // Return false in the callback to not continue for the rest of the receivers
-func (session *ttyShareSession) forEachReceiverLock(cb func(rcvConn *TTYProtocolConn) bool) {
+func (session *ttyShareSession) forEachReceiverLock(cb func(rcvConn *TTYProtocolWriter) bool) {
 	session.mainRWLock.RLock()
 	// TODO: Maybe find a better way?
 	rcvsCopy := copyList(session.ttyReceiverConnections)
 	session.mainRWLock.RUnlock()
 
 	for receiverE := rcvsCopy.Front(); receiverE != nil; receiverE = receiverE.Next() {
-		receiver := receiverE.Value.(*TTYProtocolConn)
+		receiver := receiverE.Value.(*TTYProtocolWriter)
 		if !cb(receiver) {
 			break
 		}
@@ -137,62 +101,44 @@ func (session *ttyShareSession) forEachReceiverLock(cb func(rcvConn *TTYProtocol
 // Will run on the TTYReceiver connection go routine (e.g.: on the websockets connection routine)
 // When HandleReceiver will exit, the connection to the TTYReceiver will be closed
 func (session *ttyShareSession) HandleReceiver(rawConn *WSConnection) {
-	rcvProtoConn := NewTTYProtocolConn(rawConn)
-
-	session.mainRWLock.Lock()
-	if !session.isAlive {
-		log.Warnf("TTYReceiver tried to connect to a session that is not alive anymore. Rejecting it..")
-		session.mainRWLock.Unlock()
-		return
-	}
+	rcvReader := NewTTYProtocolReader(rawConn)
+	rcvWriter := NewTTYProtocolWriter(rawConn)
 
 	// Add the receiver to the list of receivers in the seesion, so we need to write-lock
-	rcvHandleEl := session.ttyReceiverConnections.PushBack(rcvProtoConn)
-	senderConn := session.ttySenderConnection
-	lastWindowSize, _ := json.Marshal(session.lastWindowSizeMsg)
+	session.mainRWLock.Lock()
+	rcvHandleEl := session.ttyReceiverConnections.PushBack(rcvWriter)
+	lastWindowSizeData, _ := MarshalMsg(session.lastWindowSizeMsg)
 	session.mainRWLock.Unlock()
 
 	log.Debugf("Got new TTYReceiver connection (%s). Serving it..", rawConn.Address())
 
 	// Sending the initial size of the window, if we have one
-	rcvProtoConn.WriteRawData(lastWindowSize)
-
-	// Notify the tty-share that we got a new receiver connected
-	msgRcvConnected, err := MarshalMsg(MsgTTYSenderNewReceiverConnected{
-		Name: rawConn.Address(),
-	})
-	senderConn.WriteRawData(msgRcvConnected)
-
-	if err != nil {
-		log.Errorf("Cannot notify tty sender. Error: %s", err.Error())
-	}
+	rcvWriter.WriteRawData(lastWindowSizeData)
 
 	// Wait until the TTYReceiver will close the connection on its end
 	for {
-		msg, err := rcvProtoConn.ReadMessage()
-
+		msg, err := rcvReader.ReadMessage()
 		if err != nil {
 			log.Warnf("Finishing handling the TTYReceiver loop because: %s", err.Error())
 			break
 		}
 
-		switch msg.Type {
-		case MsgIDWinSize:
-			// Ignore these messages from the receiver. For now, the policy is that the sender
-			// decides on the window size.
-		case MsgIDWrite:
-			rawData, _ := json.Marshal(msg)
-			senderConn.WriteRawData(rawData)
-		default:
-			log.Warnf("Receiving unknown data from the receiver")
+		// We only support MsgTTYWrite from the web terminal for now
+		if msg.Type != MsgIDWrite {
+			log.Warnf("TTYReceiver sent unknown message type %s", msg.Type)
+			break
 		}
-	}
 
-	log.Debugf("Closing receiver connection")
-	rcvProtoConn.Close()
+		var msgW MsgTTYWrite
+		json.Unmarshal(msg.Data, &msgW)
+		session.ttyWriter.Write(msgW.Data)
+	}
 
 	// Remove the recevier from the list of the receiver of this session, so we need to write-lock
 	session.mainRWLock.Lock()
 	session.ttyReceiverConnections.Remove(rcvHandleEl)
 	session.mainRWLock.Unlock()
+
+	rawConn.Close()
+	log.Debugf("Closed receiver connection")
 }

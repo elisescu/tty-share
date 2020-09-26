@@ -1,21 +1,32 @@
 package main
 
 import (
-	"crypto/tls"
-	"crypto/x509"
-	"encoding/json"
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
-	"net"
 	"os"
+
 	"strings"
 
-	logrus "github.com/sirupsen/logrus"
+	"github.com/elisescu/tty-share/server"
+	ttyServer "github.com/elisescu/tty-share/server"
+	log "github.com/sirupsen/logrus"
 )
 
-var log = logrus.New()
 var version string = "0.0.0"
+
+func createServer(frontListenAddress string, frontendPath string, tty io.Writer) *server.TTYServer {
+	config := ttyServer.TTYServerConfig{
+		FrontListenAddress: frontListenAddress,
+		FrontendPath:       frontendPath,
+		TTYWriter:          tty,
+	}
+
+	server := ttyServer.NewTTYServer(config)
+	log.Info("Listening on address: http://", config.FrontListenAddress)
+	return server
+}
 
 func main() {
 	commandName := flag.String("command", os.Getenv("SHELL"), "The command to run")
@@ -24,9 +35,9 @@ func main() {
 	}
 	commandArgs := flag.String("args", "", "The command arguments")
 	logFileName := flag.String("logfile", "-", "The name of the file to log")
-	useTLS := flag.Bool("useTLS", true, "Use TLS to connect to the server")
-	server := flag.String("server", "go.tty-share.com:7654", "tty-server address")
+	listenAddress := flag.String("listen", "localhost:8080", "tty-server address")
 	versionFlag := flag.Bool("version", false, "Print the tty-share version")
+	frontendPath := flag.String("frontend_path", "", "The path to the frontend resources. By default, these resources are included in the server binary, so you only need this path if you don't want to use the bundled ones.")
 	flag.Parse()
 
 	if *versionFlag {
@@ -34,15 +45,15 @@ func main() {
 		return
 	}
 
-	log.Level = logrus.ErrorLevel
+	log.SetLevel(log.ErrorLevel)
 	if *logFileName != "-" {
 		fmt.Printf("Writing logs to: %s\n", *logFileName)
 		logFile, err := os.Create(*logFileName)
 		if err != nil {
 			fmt.Printf("Can't open %s for writing logs\n", *logFileName)
 		}
-		log.Level = logrus.DebugLevel
-		log.Out = logFile
+		log.SetLevel(log.DebugLevel)
+		log.SetOutput(logFile)
 	}
 
 	if !isStdinTerminal() {
@@ -50,87 +61,37 @@ func main() {
 		os.Exit(1)
 	}
 
-	var rawConnection io.ReadWriteCloser
-	if *useTLS {
-		roots, err := x509.SystemCertPool()
-		if err != nil {
-			fmt.Printf("Cannot connect to the server (%s): %s", *server, err.Error())
-			return
-		}
-		rawConnection, err = tls.Dial("tcp", *server, &tls.Config{RootCAs: roots})
-		if err != nil {
-			fmt.Printf("Cannot connect (TLS) to the server (%s): %s", *server, err.Error())
-			return
-		}
-	} else {
-		var err error
-		rawConnection, err = net.Dial("tcp", *server)
-		if err != nil {
-			fmt.Printf("Cannot connect to the server (%s): %s", *server, err.Error())
-			return
-		}
-	}
-
-	serverConnection := NewTTYProtocolConn(rawConnection)
-	reply, err := serverConnection.InitSender(SenderSessionInfo{
-		Salt:              "salt",
-		PasswordVerifierA: "PV_A",
-	})
-
-	if err != nil {
-		fmt.Printf("Cannot initialise the protocol connection: %s", err.Error())
-		return
-	}
-
-	log.Infof("Web terminal: %s", reply.URLWebReadWrite)
-
 	// Display the session information to the user, before showing any output from the command.
 	// Wait until the user presses Enter
-	fmt.Printf("Web terminal: %s\n\n\r", reply.URLWebReadWrite)
-	//TODO: if the user on the remote side presses keys, and so messages are sent back to the
-	// tty sender, they will be delivered all at once, after Enter has been pressed. Fix that.
+	fmt.Printf("Web terminal: http://%s\n\n\rPress Enter to continue!\n", *listenAddress)
+	bufio.NewReader(os.Stdin).ReadString('\n')
 
 	ptyMaster := ptyMasterNew()
-	ptyMaster.Start(*commandName, strings.Fields(*commandArgs), func(cols, rows int) {
-		log.Infof("New window size: %dx%d", cols, rows)
-		serverConnection.SetWinSize(cols, rows)
-	})
+	ptyMaster.Start(*commandName, strings.Fields(*commandArgs))
 
+	server := createServer(*listenAddress, *frontendPath, ptyMaster)
 	if cols, rows, e := ptyMaster.GetWinSize(); e == nil {
-		serverConnection.SetWinSize(cols, rows)
+		server.WindowSize(cols, rows)
 	}
 
-	allWriter := io.MultiWriter(os.Stdout, serverConnection)
+	ptyMaster.SetWinChangeCB(func(cols, rows int) {
+		log.Infof("New window size: %dx%d", cols, rows)
+		server.WindowSize(cols, rows)
+	})
+
+	mw := io.MultiWriter(os.Stdout, server)
 
 	go func() {
-		_, err := io.Copy(allWriter, ptyMaster)
-		if err != nil {
-			log.Error("Lost connection with the server.\n")
-			ptyMaster.Stop()
-		}
+		server.Run(func (clientAddr string){
+			ptyMaster.Refresh()
+		})
 	}()
 
 	go func() {
-		for {
-			msg, err := serverConnection.ReadMessage()
-
-			if err != nil {
-				fmt.Printf(" -- Finishing the server connection with error: %s", err.Error())
-				break
-			}
-
-			if msg.Type == MsgIDWrite {
-				var msgWrite MsgTTYWrite
-				json.Unmarshal(msg.Data, &msgWrite)
-				ptyMaster.Write(msgWrite.Data[:msgWrite.Size])
-			}
-			if msg.Type == MsgIDSenderNewReceiverConnected {
-				var msgReceiverConnected MsgTTYSenderNewReceiverConnected
-				json.Unmarshal(msg.Data, &msgReceiverConnected)
-
-				ptyMaster.Refresh()
-				fmt.Printf("New receiver connected: %s ", msgReceiverConnected.Name)
-			}
+		_, err := io.Copy(mw, ptyMaster)
+		if err != nil {
+			log.Error("Lost connection with the server.\n")
+			ptyMaster.Stop()
 		}
 	}()
 
@@ -139,4 +100,6 @@ func main() {
 	}()
 
 	ptyMaster.Wait()
+	fmt.Printf("tty-share finished.\n\r")
+	server.Stop()
 }
