@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"html/template"
 	"io"
 	"mime"
@@ -22,7 +23,7 @@ const (
 type NewClientConnectedCB func(string)
 
 // SessionTemplateModel used for templating
-type SessionTemplateModel struct {
+type AASessionTemplateModel struct {
 	SessionID string
 	Salt      string
 	WSPath    string
@@ -30,17 +31,18 @@ type SessionTemplateModel struct {
 
 // TTYServerConfig is used to configure the tty server before it is started
 type TTYServerConfig struct {
-	FrontListenAddress   string
-	FrontendPath string
-	TTYWriter io.Writer
+	FrontListenAddress string
+	FrontendPath       string
+	TTYWriter          io.Writer
+	SessionID          string
 }
 
 // TTYServer represents the instance of a tty server
 type TTYServer struct {
-	httpServer *http.Server
+	httpServer  *http.Server
 	newClientCB NewClientConnectedCB
-	config     TTYServerConfig
-	session    *ttyShareSession
+	config      TTYServerConfig
+	session     *ttyShareSession
 }
 
 func (server *TTYServer) serveContent(w http.ResponseWriter, r *http.Request, name string) {
@@ -85,20 +87,34 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 	}
 	routesHandler := mux.NewRouter()
 
-	routesHandler.PathPrefix("/static/").Handler(http.StripPrefix("/static/",
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			server.serveContent(w, r, r.URL.Path)
-		})))
+	installHandlers := func(session string) {
+		path := fmt.Sprintf("/%s/static/", session)
+		routesHandler.PathPrefix(path).Handler(http.StripPrefix(path,
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				server.serveContent(w, r, r.URL.Path)
+			})))
 
-	routesHandler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		server.handleMainApp(w, r)
-	})
-	routesHandler.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		server.handleWebsocket(w, r)
-	})
-	routesHandler.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		server.serveContent(w, r, "404.html")
-	})
+		routesHandler.HandleFunc(fmt.Sprintf("/%s/", session), func(w http.ResponseWriter, r *http.Request) {
+			templateModel := struct {
+				PathPrefix string
+				WSPath    string
+			}{session, "/" + session + "/ws"}
+
+			server.handleWithTemplateHtml(w, r, "tty-share.in.html", templateModel)
+		})
+		routesHandler.HandleFunc(fmt.Sprintf("/%s/ws", session), func(w http.ResponseWriter, r *http.Request) {
+			server.handleWebsocket(w, r)
+		})
+		routesHandler.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			templateModel := struct{PathPrefix string }{session}
+			server.handleWithTemplateHtml(w, r, "404.in.html", templateModel)
+		})
+	}
+
+	// Install the same routes on both the /local/ and /<SessionID>/. The session ID is received
+	// from the tty-proxy server, if a public session is involved.
+	installHandlers("local")
+	installHandlers(config.SessionID)
 
 	server.httpServer.Handler = routesHandler
 	server.session = newTTYShareSession(config.TTYWriter)
@@ -106,22 +122,12 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 	return server
 }
 
-func getWSPath(sessionID string) string {
-	return "/ws" + sessionID
-}
-
 func (server *TTYServer) handleWebsocket(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	sessionID := vars["sessionID"]
-	defer log.Debug("Finished WS connection for ", sessionID)
-
-	// Validate incoming request.
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
-	// Upgrade to Websocket mode.
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
@@ -129,49 +135,38 @@ func (server *TTYServer) handleWebsocket(w http.ResponseWriter, r *http.Request)
 	conn, err := upgrader.Upgrade(w, r, nil)
 
 	if err != nil {
-		log.Error("Cannot create the WS connection for session ", sessionID, ". Error: ", err.Error())
+		log.Error("Cannot create the WS connection: ", err.Error())
 		return
 	}
 
 	server.newClientCB(conn.RemoteAddr().String())
-	server.session.HandleReceiver(newWSConnection(conn))
+	server.session.HandleWSConnection(newWSConnection(conn))
 }
 
-func (server *TTYServer) handleMainApp(w http.ResponseWriter, r *http.Request) {
+func panicIfErr(err error) {
+	if err != nil {
+		panic(err.Error())
+	}
+}
+
+func (server *TTYServer) handleWithTemplateHtml(responseWriter http.ResponseWriter, r *http.Request, templateFile string, templateInterface interface{}) {
 	var t *template.Template
 	var err error
 	if server.config.FrontendPath == "" {
-		templateDta, err := Asset("tty-receiver.in.html")
-
-		if err != nil {
-			panic("Cannot find the tty-receiver html template")
-		}
-
-		t = template.New("tty-receiver.html")
+		templateDta, err := Asset(templateFile)
+		panicIfErr(err)
+		t = template.New(templateFile)
 		_, err = t.Parse(string(templateDta))
 	} else {
-		t, err = template.ParseFiles(server.config.FrontendPath + string(os.PathSeparator) + "tty-receiver.in.html")
+		t, err = template.ParseFiles(server.config.FrontendPath + string(os.PathSeparator) + templateFile)
 	}
+	panicIfErr(err)
 
-	if err != nil {
-		panic("Cannot parse the tty-receiver html template")
-	}
+	err = t.Execute(responseWriter, templateInterface)
+	panicIfErr(err)
 
-	sessionID := ""
-
-	templateModel := SessionTemplateModel{
-		SessionID: sessionID,
-		Salt:      "salt&pepper",
-		WSPath:    getWSPath(sessionID),
-	}
-	err = t.Execute(w, templateModel)
-
-	if err != nil {
-		panic("Cannot execute the tty-receiver html template")
-	}
 }
 
-// Run starts listening on connections
 func (server *TTYServer) Run(cb NewClientConnectedCB) (err error) {
 	server.newClientCB = cb
 	err = server.httpServer.ListenAndServe()
@@ -187,7 +182,6 @@ func (server *TTYServer) WindowSize(cols, rows int) (err error) {
 	return server.session.WindowSize(cols, rows)
 }
 
-// Stop closes down the server
 func (server *TTYServer) Stop() error {
 	log.Debug("Stopping the server")
 	return server.httpServer.Close()

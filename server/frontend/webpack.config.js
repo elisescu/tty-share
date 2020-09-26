@@ -5,7 +5,7 @@ const develBuild = process.env.TTY_SHARE_ENV === 'development';
 
 let mainConfig  = {
     entry: {
-        'tty-receiver': './tty-receiver/main.ts',
+        'tty-share': './tty-share/main.ts',
     },
     output: {
         path: __dirname + '/public/',

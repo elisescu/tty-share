@@ -66,7 +66,6 @@ func (session *ttyShareSession) Write(buff []byte) (written int, err error) {
 
 	data, _ := MarshalMsg(msg)
 
-	log.Debugf("Writing %s\n", string(buff))
 	session.forEachReceiverLock(func(rcvConn *TTYProtocolWriter) bool {
 		_, e := rcvConn.WriteRawData(data)
 		if e != nil {
@@ -98,11 +97,28 @@ func (session *ttyShareSession) forEachReceiverLock(cb func(rcvConn *TTYProtocol
 	}
 }
 
+// quick and dirty locked writer
+type lockedWriter struct {
+	writer io.Writer
+	lock sync.Mutex
+}
+
+func (wl *lockedWriter) Write(data []byte) (int, error) {
+	wl.lock.Lock()
+	defer wl.lock.Unlock()
+	return wl.writer.Write(data)
+}
+
 // Will run on the TTYReceiver connection go routine (e.g.: on the websockets connection routine)
-// When HandleReceiver will exit, the connection to the TTYReceiver will be closed
-func (session *ttyShareSession) HandleReceiver(rawConn *WSConnection) {
-	rcvReader := NewTTYProtocolReader(rawConn)
-	rcvWriter := NewTTYProtocolWriter(rawConn)
+// When HandleWSConnection will exit, the connection to the TTYReceiver will be closed
+func (session *ttyShareSession) HandleWSConnection(wsConn *WSConnection) {
+	rcvReader := NewTTYProtocolReader(wsConn)
+
+	// Gorilla websockets don't allow for concurent writes. Lazy, and perhaps shorter solution
+	// is to wrap a lock around a writer. Maybe later replace it with a channel
+	rcvWriter := NewTTYProtocolWriter(&lockedWriter{
+		writer: wsConn,
+	})
 
 	// Add the receiver to the list of receivers in the seesion, so we need to write-lock
 	session.mainRWLock.Lock()
@@ -110,7 +126,7 @@ func (session *ttyShareSession) HandleReceiver(rawConn *WSConnection) {
 	lastWindowSizeData, _ := MarshalMsg(session.lastWindowSizeMsg)
 	session.mainRWLock.Unlock()
 
-	log.Debugf("Got new TTYReceiver connection (%s). Serving it..", rawConn.Address())
+	log.Debugf("Got new TTYReceiver connection (%s). Serving it..", wsConn.Address())
 
 	// Sending the initial size of the window, if we have one
 	rcvWriter.WriteRawData(lastWindowSizeData)
@@ -139,6 +155,6 @@ func (session *ttyShareSession) HandleReceiver(rawConn *WSConnection) {
 	session.ttyReceiverConnections.Remove(rcvHandleEl)
 	session.mainRWLock.Unlock()
 
-	rawConn.Close()
+	wsConn.Close()
 	log.Debugf("Closed receiver connection")
 }
