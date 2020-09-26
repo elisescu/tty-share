@@ -1,5 +1,9 @@
 # github.com/elisescu/pty v1.0.2
 github.com/elisescu/pty
+# github.com/gorilla/mux v1.8.0
+github.com/gorilla/mux
+# github.com/gorilla/websocket v1.4.2
+github.com/gorilla/websocket
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/sirupsen/logrus v1.4.2

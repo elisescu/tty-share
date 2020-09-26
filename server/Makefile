@@ -16,12 +16,12 @@ $(TTY_SERVER): $(TTY_SERVER_SRC)
 
 assets_bundle.go: $(TTY_SERVER_ASSETS)
 	go get github.com/go-bindata/go-bindata/...
-	go-bindata --prefix frontend/public/ -o $@ frontend/public/*
+	go-bindata --prefix frontend/public/ -pkg server -o $@ frontend/public/*
 
 %.zip: %
 	zip $@ $^
 
-frontend: cleanfront frontend/public/index.html
+frontend: cleanfront frontend/public/index.html assets_bundle.go
 
 frontend/public/index.html:
 	cd frontend && npm install && npm run build && cd -

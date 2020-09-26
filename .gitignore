@@ -1,3 +1,7 @@
+
+server/frontend/node_modules
+server/frontend/public
+
 out
 .DS_Store
 playground/

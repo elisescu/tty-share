@@ -9,16 +9,16 @@ import (
 
 	ptyDevice "github.com/elisescu/pty"
 	"golang.org/x/crypto/ssh/terminal"
+	log "github.com/sirupsen/logrus"
 )
 
-type onWindowChangesCB func(int, int)
+type onWindowChangedCB func(int, int)
 
 // This defines a PTY Master whih will encapsulate the command we want to run, and provide simple
 // access to the command, to write and read IO, but also to control the window size.
 type ptyMaster struct {
 	ptyFile           *os.File
 	command           *exec.Cmd
-	windowChangedCB   onWindowChangesCB
 	terminalInitState *terminal.State
 }
 
@@ -30,9 +30,7 @@ func isStdinTerminal() bool {
 	return terminal.IsTerminal(0)
 }
 
-func (pty *ptyMaster) Start(command string, args []string, winChangedCB onWindowChangesCB) (err error) {
-	pty.windowChangedCB = winChangedCB
-
+func (pty *ptyMaster) Start(command string, args []string) (err error) {
 	// Save the initial state of the terminal, before making it RAW. Note that this terminal is the
 	// terminal under which the tty-share command has been started, and it's identified via the
 	// stdin file descriptor (0 in this case)
@@ -49,6 +47,13 @@ func (pty *ptyMaster) Start(command string, args []string, winChangedCB onWindow
 		return
 	}
 
+	// Set the initial window size
+	cols, rows, err := terminal.GetSize(0)
+	pty.SetWinSize(rows, cols)
+	return
+}
+
+func (pty *ptyMaster) SetWinChangeCB(winChangedCB onWindowChangedCB) {
 	// Start listening for window changes
 	go onWindowChanges(func(cols, rows int) {
 		// TODO:policy: should the server decide here if we care about the size and set it
@@ -56,13 +61,8 @@ func (pty *ptyMaster) Start(command string, args []string, winChangedCB onWindow
 		pty.SetWinSize(rows, cols)
 
 		// Notify the ptyMaster user of the window changes, to be sent to the remote side
-		pty.windowChangedCB(cols, rows)
+		winChangedCB(cols, rows)
 	})
-
-	// Set the initial window size
-	cols, rows, err := terminal.GetSize(0)
-	pty.SetWinSize(rows, cols)
-	return
 }
 
 func (pty *ptyMaster) GetWinSize() (int, int, error) {
@@ -117,9 +117,9 @@ func (pty *ptyMaster) Stop() (err error) {
 	return
 }
 
-func onWindowChanges(winChangedCb func(cols, rows int)) {
-	winChangedSig := make(chan os.Signal, 1)
-	signal.Notify(winChangedSig, syscall.SIGWINCH)
+func onWindowChanges(wcCB onWindowChangedCB) {
+	wcChan := make(chan os.Signal, 1)
+	signal.Notify(wcChan, syscall.SIGWINCH)
 	// The interface for getting window changes from the pty slave to its process, is via signals.
 	// In our case here, the tty-share command (built in this project) is the client, which should
 	// get notified if the terminal window in which it runs has changed. To get that, it needs to
@@ -132,10 +132,10 @@ func onWindowChanges(winChangedCb func(cols, rows int)) {
 
 	for {
 		select {
-		case <-winChangedSig:
+		case <-wcChan:
 			cols, rows, err := terminal.GetSize(0)
 			if err == nil {
-				winChangedCb(cols, rows)
+				wcCB(cols, rows)
 			} else {
 				log.Warnf("Can't get window size: %s", err.Error())
 			}
