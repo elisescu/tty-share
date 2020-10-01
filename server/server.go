@@ -95,10 +95,14 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 			})))
 
 		routesHandler.HandleFunc(fmt.Sprintf("/%s/", session), func(w http.ResponseWriter, r *http.Request) {
+			wsPath :=  "/" + session + "/ws"
 			templateModel := struct {
 				PathPrefix string
 				WSPath    string
-			}{session, "/" + session + "/ws"}
+			}{session, wsPath}
+			// Extract these in constants
+			w.Header().Add("TTYSHARE-VERSION", "1")
+			w.Header().Add("TTYSHARE-WSPATH", wsPath)
 
 			server.handleWithTemplateHtml(w, r, "tty-share.in.html", templateModel)
 		})
