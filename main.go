@@ -48,6 +48,7 @@ func main() {
 	proxyServerAddress := flag.String("proxy_address", "localhost:9000", "Address of the proxy for public facing connections")
 	readOnly := flag.Bool("readonly", false, "Start a read only session")
 	publicSession := flag.Bool("public", false, "Create a public session")
+	connectURL := flag.String("connect", "", "Use as client to connect to a remote tty-share, instead of using the browser")
 	flag.Parse()
 
 	if *versionFlag {
@@ -55,7 +56,7 @@ func main() {
 		return
 	}
 
-	log.SetLevel(log.ErrorLevel)
+	log.SetLevel(log.InfoLevel)
 	if *logFileName != "-" {
 		fmt.Printf("Writing logs to: %s\n", *logFileName)
 		logFile, err := os.Create(*logFileName)
@@ -69,6 +70,18 @@ func main() {
 	if !isStdinTerminal() {
 		fmt.Printf("Input not a tty\n")
 		os.Exit(1)
+	}
+
+
+	if *connectURL != "" {
+		client := newTtyShareClient(*connectURL)
+
+		err := client.Run()
+
+		if err != nil {
+			panic(err.Error())
+		}
+		return
 	}
 
 	sessionID := "local"
