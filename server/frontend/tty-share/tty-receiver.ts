@@ -22,6 +22,7 @@ class TTYReceiver {
             scrollback: 1000,
             fontSize: 12,
             letterSpacing: 0,
+            fontFamily: 'SauceCodePro, courier-new, monospace',
         });
 
         this.containerElement = container;
