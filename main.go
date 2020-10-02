@@ -16,6 +16,7 @@ import (
 
 var version string = "0.0.0"
 
+
 func createServer(frontListenAddress string, frontendPath string, tty io.Writer, sessionID string) *server.TTYServer {
 	config := ttyServer.TTYServerConfig{
 		FrontListenAddress: frontListenAddress,
@@ -36,6 +37,24 @@ func (nw *nilWriter) Write(data []byte) (int, error) {
 }
 
 func main() {
+	usageString := `
+Usage:
+  tty-share creates a session to a terminal application with remote participants. The session can be joined either from the browser, or by tty-share command itself.
+
+    tty-share [flags]         ; share the terminal and get a session URL, as a server
+    tty-share <session URL>   ; connect to an existing session, as a client
+
+Examples:
+  Start bash and create a public sharing session, so it's accessible outside the local network, and make the session read only:
+
+    tty-share --public --readonly --command bash
+
+  Join a remote session by providing the URL created another tty-share command:
+
+     tty-share http://localhost:8000/local/
+
+Flags:
+`
 	commandName := flag.String("command", os.Getenv("SHELL"), "The command to run")
 	if *commandName == "" {
 		*commandName = "bash"
@@ -44,15 +63,36 @@ func main() {
 	logFileName := flag.String("logfile", "-", "The name of the file to log")
 	listenAddress := flag.String("listen", "localhost:8000", "tty-server address")
 	versionFlag := flag.Bool("version", false, "Print the tty-share version")
-	frontendPath := flag.String("frontend_path", "", "The path to the frontend resources. By default, these resources are included in the server binary, so you only need this path if you don't want to use the bundled ones.")
-	proxyServerAddress := flag.String("proxy_address", "localhost:9000", "Address of the proxy for public facing connections")
+	frontendPath := flag.String("frontend-path", "", "The path to the frontend resources. By default, these resources are included in the server binary, so you only need this path if you don't want to use the bundled ones.")
+	proxyServerAddress := flag.String("tty-proxy", "localhost:9000", "Address of the proxy for public facing connections")
 	readOnly := flag.Bool("readonly", false, "Start a read only session")
 	publicSession := flag.Bool("public", false, "Create a public session")
-	connectURL := flag.String("connect", "", "Use as client to connect to a remote tty-share, instead of using the browser")
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "%s", usageString)
+		flag.PrintDefaults()
+		fmt.Fprintf(flag.CommandLine.Output(), "\n")
+	}
+
 	flag.Parse()
 
 	if *versionFlag {
 		fmt.Printf("%s\n", version)
+		return
+	}
+
+	// tty-share can work in two modes: either starting a command to be shared by acting as a
+	// server, or by acting as a client for the remote side If we have an argument, that is not
+	// a flag, passed to tty-share, we expect that to be the URl to connect to, as a
+	// client. Otherwise, tty-share will act as the server.
+	args := flag.Args()
+	if len(args) == 1 {
+		connectURL := args[0]
+		client := newTtyShareClient(connectURL)
+
+		err := client.Run()
+		if err != nil {
+			fmt.Printf("Cannot connect to the remote session: %s\n", err.Error())
+		}
 		return
 	}
 
@@ -72,18 +112,6 @@ func main() {
 		os.Exit(1)
 	}
 
-
-	if *connectURL != "" {
-		client := newTtyShareClient(*connectURL)
-
-		err := client.Run()
-
-		if err != nil {
-			panic(err.Error())
-		}
-		return
-	}
-
 	sessionID := "local"
 	if *publicSession {
 		proxy, err := proxy.NewProxyConnection(*listenAddress, *proxyServerAddress)
@@ -94,13 +122,13 @@ func main() {
 
 		go proxy.RunProxy()
 		sessionID = proxy.SessionID
-		fmt.Printf("%s\n", proxy.PublicURL)
+		fmt.Printf("public session: %s\n", proxy.PublicURL)
 		defer proxy.Stop()
 	}
 
 	// Display the session information to the user, before showing any output from the command.
 	// Wait until the user presses Enter
-	fmt.Printf("http://%s/local/\n", *listenAddress)
+	fmt.Printf("local session: http://%s/local/\n", *listenAddress)
 	fmt.Printf("Press Enter to continue!\n")
 	bufio.NewReader(os.Stdin).ReadString('\n')
 
@@ -118,7 +146,7 @@ func main() {
 	}
 
 	ptyMaster.SetWinChangeCB(func(cols, rows int) {
-		log.Infof("New window size: %dx%d", cols, rows)
+		log.Debugf("New window size: %dx%d", cols, rows)
 		server.WindowSize(cols, rows)
 	})
 

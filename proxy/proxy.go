@@ -68,7 +68,7 @@ func (p *proxyConnection) RunProxy() {
 	for {
 		conn, err := p.muxSession.Accept()
 		if err != nil {
-			log.Errorf("Client: Accept returned %s. Done with this client.\n", err.Error())
+			log.Errorf("tty-proxy connection closed.\n")
 			return
 		}
 
