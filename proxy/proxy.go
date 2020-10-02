@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"io"
 	"net"
@@ -28,10 +30,24 @@ type proxyConnection struct {
 	PublicURL       string
 }
 
-func NewProxyConnection(backConnAddrr, proxyAddr string) (*proxyConnection, error) {
-	conn, err := net.Dial("tcp", proxyAddr)
-	if err != nil {
-		return nil, err
+func NewProxyConnection(backConnAddrr, proxyAddr string, noTLS bool) (*proxyConnection, error) {
+	var conn net.Conn
+	var err error
+
+	if noTLS {
+		conn, err = net.Dial("tcp", proxyAddr)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		roots, err := x509.SystemCertPool()
+		if err != nil {
+			return nil, err
+		}
+		conn, err = tls.Dial("tcp", proxyAddr, &tls.Config{RootCAs: roots})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// C -> S: HelloCLient
