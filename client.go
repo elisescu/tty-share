@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -35,7 +36,7 @@ func (w *wsTextWriter) Write(data []byte) (n int, err error) {
 }
 
 func (c *ttyShareClient) Run() (err error) {
-	log.Printf("Starting tty-share client on %s", c.url)
+	log.Debugf("Starting tty-share client on %s", c.url)
 
 	resp, err := http.Get(c.url)
 
@@ -57,7 +58,7 @@ func (c *ttyShareClient) Run() (err error) {
 	}
 	wsURL := wsScheme + "://" + httpURL.Host + wsPath
 
-	log.Printf("Connecting to WS URL: %s", wsURL)
+	log.Debugf("Connecting to WS URL: %s", wsURL)
 
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
@@ -73,7 +74,7 @@ func (c *ttyShareClient) Run() (err error) {
 			var msg ttyServer.MsgAll
 			_, r, err := conn.NextReader()
 			if err != nil {
-				log.Infof("Connection closed: %s", err.Error())
+				fmt.Printf("Connection closed\n")
 				return
 			}
 			err = json.NewDecoder(r).Decode(&msg)
@@ -92,7 +93,13 @@ func (c *ttyShareClient) Run() (err error) {
 
 				os.Stdout.Write(msgWrite.Data)
 			case ttyServer.MsgIDWinSize:
-				log.Debugf("Got Win Size msg")
+				log.Debugf("Remote window changed its size")
+				// We ignore the window size changes - can't do much about that for
+				// now.
+
+				// TODO: Maybe just clear the screen, and display an error message
+				// if the remote window gets bigger than this terminal window - when
+				// it does, it usually messes up the output
 			}
 		}
 	}
@@ -105,7 +112,8 @@ func (c *ttyShareClient) Run() (err error) {
 		_, err := io.Copy(ttyServer.NewTTYProtocolWriter(ww), os.Stdin)
 
 		if err != nil {
-			log.Errorf("Finished io.Copy with %s", err.Error())
+			fmt.Printf("Connection closed.\n")
+			return
 		}
 	}
 	go writeLoop()
