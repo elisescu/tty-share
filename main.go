@@ -67,6 +67,7 @@ Flags:
 	proxyServerAddress := flag.String("tty-proxy", "localhost:9000", "Address of the proxy for public facing connections")
 	readOnly := flag.Bool("readonly", false, "Start a read only session")
 	publicSession := flag.Bool("public", false, "Create a public session")
+	noTLS := flag.Bool("no-tls", false, "Don't use TLS to connect to the tty-proxy server. Useful for local debugging")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "%s", usageString)
 		flag.PrintDefaults()
@@ -114,7 +115,7 @@ Flags:
 
 	sessionID := "local"
 	if *publicSession {
-		proxy, err := proxy.NewProxyConnection(*listenAddress, *proxyServerAddress)
+		proxy, err := proxy.NewProxyConnection(*listenAddress, *proxyServerAddress, *noTLS)
 		if err != nil {
 			fmt.Printf("Can't connect to the proxy: %s\n", err.Error())
 			return
