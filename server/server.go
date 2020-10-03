@@ -88,25 +88,28 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 	routesHandler := mux.NewRouter()
 
 	installHandlers := func(session string) {
-		path := fmt.Sprintf("/%s/static/", session)
+		path := fmt.Sprintf("/s/%s/static/", session)
 		routesHandler.PathPrefix(path).Handler(http.StripPrefix(path,
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				server.serveContent(w, r, r.URL.Path)
 			})))
 
-		routesHandler.HandleFunc(fmt.Sprintf("/%s/", session), func(w http.ResponseWriter, r *http.Request) {
-			wsPath :=  "/" + session + "/ws"
+		routesHandler.HandleFunc(fmt.Sprintf("/s/%s/", session), func(w http.ResponseWriter, r *http.Request) {
+			wsPath :=  "/s/" + session + "/ws"
+			pathPrefix := "/s/" + session
+			// Check the frontend/templates/tty-share.in.html file to see where the template applies
 			templateModel := struct {
 				PathPrefix string
 				WSPath    string
-			}{session, wsPath}
-			// Extract these in constants
+			}{pathPrefix, wsPath}
+
+			// TODO Extract these in constants
 			w.Header().Add("TTYSHARE-VERSION", "1")
 			w.Header().Add("TTYSHARE-WSPATH", wsPath)
 
 			server.handleWithTemplateHtml(w, r, "tty-share.in.html", templateModel)
 		})
-		routesHandler.HandleFunc(fmt.Sprintf("/%s/ws", session), func(w http.ResponseWriter, r *http.Request) {
+		routesHandler.HandleFunc(fmt.Sprintf("/s/%s/ws", session), func(w http.ResponseWriter, r *http.Request) {
 			server.handleWebsocket(w, r)
 		})
 		routesHandler.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

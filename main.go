@@ -16,7 +16,6 @@ import (
 
 var version string = "0.0.0"
 
-
 func createServer(frontListenAddress string, frontendPath string, tty io.Writer, sessionID string) *server.TTYServer {
 	config := ttyServer.TTYServerConfig{
 		FrontListenAddress: frontListenAddress,
@@ -51,7 +50,7 @@ Examples:
 
   Join a remote session by providing the URL created another tty-share command:
 
-     tty-share http://localhost:8000/local/
+     tty-share http://localhost:8000/s/local/
 
 Flags:
 `
@@ -64,21 +63,35 @@ Flags:
 	listenAddress := flag.String("listen", "localhost:8000", "tty-server address")
 	versionFlag := flag.Bool("version", false, "Print the tty-share version")
 	frontendPath := flag.String("frontend-path", "", "The path to the frontend resources. By default, these resources are included in the server binary, so you only need this path if you don't want to use the bundled ones.")
-	proxyServerAddress := flag.String("tty-proxy", "localhost:9000", "Address of the proxy for public facing connections")
+	proxyServerAddress := flag.String("tty-proxy", "on.tty-share.com:4567", "Address of the proxy for public facing connections")
 	readOnly := flag.Bool("readonly", false, "Start a read only session")
 	publicSession := flag.Bool("public", false, "Create a public session")
 	noTLS := flag.Bool("no-tls", false, "Don't use TLS to connect to the tty-proxy server. Useful for local debugging")
+	verbose := flag.Bool("verbose", false, "Verbose logging")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "%s", usageString)
 		flag.PrintDefaults()
 		fmt.Fprintf(flag.CommandLine.Output(), "\n")
 	}
-
 	flag.Parse()
 
 	if *versionFlag {
 		fmt.Printf("%s\n", version)
 		return
+	}
+
+	// Log setup
+	log.SetLevel(log.WarnLevel)
+	if *verbose {
+		log.SetLevel(log.DebugLevel)
+	}
+
+	if *logFileName != "-" {
+		logFile, err := os.Create(*logFileName)
+		if err != nil {
+			fmt.Printf("Can't open %s for writing logs\n", *logFileName)
+		}
+		log.SetOutput(logFile)
 	}
 
 	// tty-share can work in two modes: either starting a command to be shared by acting as a
@@ -92,22 +105,12 @@ Flags:
 
 		err := client.Run()
 		if err != nil {
-			fmt.Printf("Cannot connect to the remote session: %s\n", err.Error())
+			log.Errorf("Cannot connect to the remote session. Make sure the URL points to a valid tty-share session.", err.Error())
 		}
 		return
 	}
 
-	log.SetLevel(log.InfoLevel)
-	if *logFileName != "-" {
-		fmt.Printf("Writing logs to: %s\n", *logFileName)
-		logFile, err := os.Create(*logFileName)
-		if err != nil {
-			fmt.Printf("Can't open %s for writing logs\n", *logFileName)
-		}
-		log.SetLevel(log.DebugLevel)
-		log.SetOutput(logFile)
-	}
-
+	// tty-share works as a server, from here on
 	if !isStdinTerminal() {
 		fmt.Printf("Input not a tty\n")
 		os.Exit(1)
@@ -117,7 +120,7 @@ Flags:
 	if *publicSession {
 		proxy, err := proxy.NewProxyConnection(*listenAddress, *proxyServerAddress, *noTLS)
 		if err != nil {
-			fmt.Printf("Can't connect to the proxy: %s\n", err.Error())
+			log.Errorf("Can't connect to the proxy: %s\n", err.Error())
 			return
 		}
 
@@ -129,7 +132,7 @@ Flags:
 
 	// Display the session information to the user, before showing any output from the command.
 	// Wait until the user presses Enter
-	fmt.Printf("local session: http://%s/local/\n", *listenAddress)
+	fmt.Printf("local session: http://%s/s/local/\n", *listenAddress)
 	fmt.Printf("Press Enter to continue!\n")
 	bufio.NewReader(os.Stdin).ReadString('\n')
 
@@ -158,7 +161,7 @@ Flags:
 			ptyMaster.Refresh()
 		})
 		if err != nil {
-			log.Error(err.Error())
+			log.Debugf("Server done: %s", err.Error())
 		}
 	}()
 
@@ -175,7 +178,6 @@ Flags:
 	}()
 
 	ptyMaster.Wait()
-	fmt.Printf("tty-share finished.\n\r")
+	fmt.Printf("tty-share finished\n\n")
 	server.Stop()
-
 }
