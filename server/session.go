@@ -126,7 +126,7 @@ func (session *ttyShareSession) HandleWSConnection(wsConn *WSConnection) {
 	lastWindowSizeData, _ := MarshalMsg(session.lastWindowSizeMsg)
 	session.mainRWLock.Unlock()
 
-	log.Debugf("Got new TTYReceiver connection (%s). Serving it..", wsConn.Address())
+	log.Debugf("New WS connection (%s). Serving ..", wsConn.Address())
 
 	// Sending the initial size of the window, if we have one
 	rcvWriter.WriteRawData(lastWindowSizeData)
@@ -135,13 +135,13 @@ func (session *ttyShareSession) HandleWSConnection(wsConn *WSConnection) {
 	for {
 		msg, err := rcvReader.ReadMessage()
 		if err != nil {
-			log.Warnf("Finishing handling the TTYReceiver loop because: %s", err.Error())
+			log.Debugf("Finished the WS reading loop: %s", err.Error())
 			break
 		}
 
 		// We only support MsgTTYWrite from the web terminal for now
 		if msg.Type != MsgIDWrite {
-			log.Warnf("TTYReceiver sent unknown message type %s", msg.Type)
+			log.Warnf("Unknown message over the WS connection: type %s", msg.Type)
 			break
 		}
 

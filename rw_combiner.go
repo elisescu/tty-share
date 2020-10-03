@@ -16,10 +16,10 @@ func newReadWriter(r io.Reader, w io.Writer) io.ReadWriter {
 	}
 }
 
-func (c *combiner)Read(p []byte) (n int, err error) {
+func (c *combiner) Read(p []byte) (n int, err error) {
 	return c.r.Read(p)
 }
 
-func (c *combiner)Write(p []byte) (n int, err error) {
+func (c *combiner) Write(p []byte) (n int, err error) {
 	return c.w.Write(p)
 }

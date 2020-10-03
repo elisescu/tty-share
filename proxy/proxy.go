@@ -51,8 +51,9 @@ func NewProxyConnection(backConnAddrr, proxyAddr string, noTLS bool) (*proxyConn
 	}
 
 	// C -> S: HelloCLient
-	// S -> C: HelloServer (sesionID)
+	// S -> C: HelloServer {sesionID}
 	je := json.NewEncoder(conn)
+	// TODO: extract these strings constants somewhere at some point
 	helloC := HelloClient{
 		Version: "1",
 		Data:    "-",
@@ -69,7 +70,7 @@ func NewProxyConnection(backConnAddrr, proxyAddr string, noTLS bool) (*proxyConn
 		return nil, err
 	}
 
-	log.Debugf("Got from the ReverseProxy: version=%s, sessionID=%s", helloS.Version, helloS.SessionID)
+	log.Debugf("Connected to %s tty-proxy: version=%s, sessionID=%s", helloS.PublicURL, helloS.Version, helloS.SessionID)
 	session, err := yamux.Server(conn, nil)
 
 	return &proxyConnection{
@@ -82,21 +83,23 @@ func NewProxyConnection(backConnAddrr, proxyAddr string, noTLS bool) (*proxyConn
 
 func (p *proxyConnection) RunProxy() {
 	for {
-		conn, err := p.muxSession.Accept()
+		frontConn, err := p.muxSession.Accept()
 		if err != nil {
-			log.Errorf("tty-proxy connection closed.\n")
+			log.Debugf("tty-proxy connection closed: %s", err.Error())
 			return
 		}
+		defer frontConn.Close()
 
 		go func() {
-			dst, err := net.Dial("tcp", p.backConnAddress)
-			defer dst.Close()
-			defer conn.Close()
+			backConn, err := net.Dial("tcp", p.backConnAddress)
 
 			if err != nil {
-				log.Errorf("Client: Can't connect to the target HTTP server: %s\n", err.Error())
+				log.Errorf("Cannot proxy the connection to the target HTTP server: %s", err.Error())
+				return
 			}
-			glueConnAndWait(dst, conn)
+			defer backConn.Close()
+
+			pipeConnectionsAndWait(backConn, frontConn)
 		}()
 	}
 }
@@ -112,25 +115,36 @@ func errToString(err error) string {
 	return "nil"
 }
 
-func glueConnAndWait(conn1, conn2 net.Conn) error {
+func pipeConnectionsAndWait(backConn, frontConn net.Conn) error {
 	errChan := make(chan error, 2)
 
-	log.Debugf("Starting the glue of the two conn %s  %s", conn1.LocalAddr().String(), conn2.LocalAddr().String())
+	backConnAddr := backConn.RemoteAddr().String()
+	frontConnAddr := frontConn.RemoteAddr().String()
 
-	copyAndNotify := func(dst, src net.Conn) {
+	log.Debugf("Piping the two conn %s <-> %s ..", backConnAddr, frontConnAddr)
+
+	copyAndNotify := func(dst, src net.Conn, info string) {
 		n, err := io.Copy(dst, src)
-		log.Debugf("Wrote %d bytes,  %s -> %s\n", n, src.LocalAddr().String(), dst.LocalAddr().String())
-		if err != nil {
-			log.Debugf("  -- ended with error: %s\n", err.Error())
-		}
+		log.Debugf("%s: piping done with %d bytes, and err %s", info, n, errToString(err))
 		errChan <- err
+
+		// Close both connections when done with copying. Yeah, both will beclosed two
+		// times, but it doesn't matter. By closing them both, we unblock the other copy
+		// call which would block indefinitely otherwise
+		dst.Close()
+		src.Close()
 	}
 
-	go copyAndNotify(conn1, conn2)
-	go copyAndNotify(conn2, conn1)
+	go copyAndNotify(backConn, frontConn, "front->back")
+	go copyAndNotify(frontConn, backConn, "back->front")
 	err1 := <-errChan
 	err2 := <-errChan
 
-	log.Debugf("Finished the glued connections with: %s and %s", errToString(err1), errToString(err2))
-	return err1
+	log.Debugf("Piping finished for %s <-> %s .", backConnAddr, frontConnAddr)
+
+	// Return one of the two error that is not nil
+	if err1 != nil {
+		return err1
+	}
+	return err2
 }
