@@ -11,8 +11,8 @@ require (
 	github.com/jroimartin/gocui v0.4.0 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
+	github.com/moby/term v0.0.0-20200915141129-7f0af18e79f2
 	github.com/nsf/termbox-go v0.0.0-20200418040025-38ba6e5628f1 // indirect
 	github.com/sirupsen/logrus v1.4.2
 	golang.org/x/crypto v0.0.0-20191227163750-53104e6ec876
-	golang.org/x/sys v0.0.0-20200103143344-a1369afcdac7 // indirect
 )
