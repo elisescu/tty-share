@@ -6,5 +6,4 @@ out
 .DS_Store
 playground/
 .vscode/
-tty-share
 tmp-*
