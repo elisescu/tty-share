@@ -40,17 +40,21 @@ func main() {
 Usage:
   tty-share creates a session to a terminal application with remote participants. The session can be joined either from the browser, or by tty-share command itself.
 
-    tty-share [flags]         ; share the terminal and get a session URL, as a server
-    tty-share <session URL>   ; connect to an existing session, as a client
+      tty-share [[--args <"args">] --command <executable>]                        # share the terminal and get a session URL, as a server
+                [--logfile <file name>] [--listen <[ip]:port>]
+                [--frontend-path <path>] [--tty-proxy <host:port>]
+                [--readonly] [--public] [no-tls] [--verbose] [--version]
+      tty-share [--verbose] [--logfile <file name>]
+                [--detach-keys]                     <session URL>                 # connect to an existing session, as a client
 
 Examples:
   Start bash and create a public sharing session, so it's accessible outside the local network, and make the session read only:
 
-    tty-share --public --readonly --command bash
+      tty-share --public --readonly --command bash
 
   Join a remote session by providing the URL created another tty-share command:
 
-     tty-share http://localhost:8000/s/local/
+      tty-share http://localhost:8000/s/local/
 
 Flags:
 `
@@ -67,6 +71,7 @@ Flags:
 	readOnly := flag.Bool("readonly", false, "Start a read only session")
 	publicSession := flag.Bool("public", false, "Create a public session")
 	noTLS := flag.Bool("no-tls", false, "Don't use TLS to connect to the tty-proxy server. Useful for local debugging")
+	detachKeys := flag.String("detach-keys", "ctrl-o,ctrl-c", "Sequence of keys to press for closing the connection. Supported: https://godoc.org/github.com/moby/term#pkg-variables.")
 	verbose := flag.Bool("verbose", false, "Verbose logging")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "%s", usageString)
@@ -101,12 +106,13 @@ Flags:
 	args := flag.Args()
 	if len(args) == 1 {
 		connectURL := args[0]
-		client := newTtyShareClient(connectURL)
+		client := newTtyShareClient(connectURL, *detachKeys)
 
 		err := client.Run()
 		if err != nil {
-			log.Errorf("Cannot connect to the remote session. Make sure the URL points to a valid tty-share session.", err.Error())
+			fmt.Printf("Cannot connect to the remote session. Make sure the URL points to a valid tty-share session.\n")
 		}
+		fmt.Printf("\ntty-share disconnected\n\n")
 		return
 	}
 
