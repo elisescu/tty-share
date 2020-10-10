@@ -2,19 +2,10 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
+
+	"github.com/gorilla/websocket"
 )
-
-type TTYProtocolReader struct {
-	reader  io.Reader
-	jsonDecoder *json.Decoder
-}
-
-type TTYProtocolWriter struct {
-	writer  io.Writer
-}
 
 const (
 	MsgIDWrite   = "Write"
@@ -22,7 +13,7 @@ const (
 )
 
 // Message used to encapsulate the rest of the bessages bellow
-type MsgAll struct {
+type MsgWrapper struct {
 	Type string
 	Data []byte
 }
@@ -37,26 +28,21 @@ type MsgTTYWinSize struct {
 	Rows int
 }
 
-func ReadAndUnmarshalMsg(reader io.Reader, aMessage interface{}) (err error) {
-	var wrapperMsg MsgAll
-	// Wait here for the right message to come
-	dec := json.NewDecoder(reader)
-	err = dec.Decode(&wrapperMsg)
+type OnMsgWrite func(data []byte)
+type OnMsgWinSize func(cols, rows int)
 
-	if err != nil {
-		return errors.New("Cannot decode top message: " + err.Error())
-	}
-
-	err = json.Unmarshal(wrapperMsg.Data, aMessage)
-
-	if err != nil {
-		return errors.New("Cannot decode message: " + err.Error() + string(wrapperMsg.Data))
-	}
-	return
+type TTYProtocolWS struct {
+	ws      *websocket.Conn
 }
 
-func MarshalMsg(aMessage interface{}) (_ []byte, err error) {
-	var msg MsgAll
+func NewTTYProtocolWS(ws *websocket.Conn) *TTYProtocolWS {
+	return &TTYProtocolWS{
+		ws:      ws,
+	}
+}
+
+func marshalMsg(aMessage interface{}) (_ []byte, err error) {
+	var msg MsgWrapper
 
 	if writeMsg, ok := aMessage.(MsgTTYWrite); ok {
 		msg.Type = MsgIDWrite
@@ -80,64 +66,62 @@ func MarshalMsg(aMessage interface{}) (_ []byte, err error) {
 	return nil, nil
 }
 
-func MarshalAndWriteMsg(writer io.Writer, aMessage interface{}) (err error) {
-	b, err := MarshalMsg(aMessage)
+
+func (handler *TTYProtocolWS) ReadAndHandle(onWrite OnMsgWrite, onWinSize OnMsgWinSize) (err error) {
+	var msg MsgWrapper
+
+	_, r, err := handler.ws.NextReader()
+	if err != nil {
+		// underlaying conn is closed. signal that through io.EOF
+		return io.EOF
+	}
+
+	err = json.NewDecoder(r).Decode(&msg)
 
 	if err != nil {
 		return
 	}
 
-	n, err := writer.Write(b)
-
-	if n != len(b) {
-		err = fmt.Errorf("Unable to write : wrote %d out of %d bytes", n, len(b))
-		return
+	switch msg.Type {
+	case MsgIDWrite:
+		var msgWrite MsgTTYWrite
+		err = json.Unmarshal(msg.Data, &msgWrite)
+		if err == nil {
+			onWrite(msgWrite.Data)
+		}
+	case MsgIDWinSize:
+		var msgRemoteWinSize MsgTTYWinSize
+		err = json.Unmarshal(msg.Data, &msgRemoteWinSize)
+		if err == nil {
+			onWinSize(msgRemoteWinSize.Cols, msgRemoteWinSize.Rows)
+		}
 	}
-
-	if err != nil {
-		return
-	}
-
 	return
 }
 
-func NewTTYProtocolWriter(w io.Writer) *TTYProtocolWriter {
-	return &TTYProtocolWriter{
-		writer:  w,
-	}
-}
-
-func NewTTYProtocolReader(r io.Reader) *TTYProtocolReader {
-	return &TTYProtocolReader{
-		reader:  r,
-		jsonDecoder: json.NewDecoder(r),
-	}
-}
-
-func (reader *TTYProtocolReader) ReadMessage() (msg MsgAll, err error) {
-	// TODO: perhaps read here the error, and transform it to something that's understandable
-	// from the outside in the context of this object
-	err = reader.jsonDecoder.Decode(&msg)
-	return
-}
-
-func (writer *TTYProtocolWriter) SetWinSize(cols, rows int) error {
+func (handler *TTYProtocolWS) SetWinSize(cols, rows int) error {
 	msgWinChanged := MsgTTYWinSize{
 		Cols: cols,
 		Rows: rows,
 	}
-	return MarshalAndWriteMsg(writer.writer, msgWinChanged)
+	data, err := marshalMsg(msgWinChanged)
+	if err != nil {
+		return err
+	}
+
+	return handler.ws.WriteMessage(websocket.TextMessage, data)
 }
 
 // Function to send data from one the sender to the server and the other way around.
-func (writer *TTYProtocolWriter) Write(buff []byte) (int, error) {
+func (handler *TTYProtocolWS) Write(buff []byte) (int, error) {
 	msgWrite := MsgTTYWrite{
 		Data: buff,
 		Size: len(buff),
 	}
-	return len(buff), MarshalAndWriteMsg(writer.writer, msgWrite)
-}
+	data, err := marshalMsg(msgWrite)
+	if err != nil {
+		return 0, err
+	}
 
-func (writer *TTYProtocolWriter) WriteRawData(buff []byte) (int, error) {
-	return writer.writer.Write(buff)
+	return len(buff), handler.ws.WriteMessage(websocket.TextMessage, data)
 }

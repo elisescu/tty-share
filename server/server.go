@@ -147,7 +147,7 @@ func (server *TTYServer) handleWebsocket(w http.ResponseWriter, r *http.Request)
 	}
 
 	server.newClientCB(conn.RemoteAddr().String())
-	server.session.HandleWSConnection(newWSConnection(conn))
+	server.session.HandleWSConnection(conn)
 }
 
 func panicIfErr(err error) {
