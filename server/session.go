@@ -2,30 +2,31 @@ package server
 
 import (
 	"container/list"
-	"encoding/json"
-
 	"io"
 	"sync"
 
+	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 )
 
 type ttyShareSession struct {
-	mainRWLock             sync.RWMutex
-	ttyReceiverConnections *list.List
-	isAlive                bool
-	lastWindowSizeMsg      MsgTTYWinSize
-	ttyWriter              io.Writer
+	mainRWLock          sync.RWMutex
+	ttyProtoConnections *list.List
+	isAlive             bool
+	lastWindowSizeMsg   MsgTTYWinSize
+	ttyWriter           io.Writer
 }
 
-func newTTYShareSession(ttyWriter io.Writer) *ttyShareSession {
+// quick and dirty locked writer
+type lockedWriter struct {
+	writer io.Writer
+	lock   sync.Mutex
+}
 
-	ttyShareSession := &ttyShareSession{
-		ttyReceiverConnections: list.New(),
-		ttyWriter:              ttyWriter,
-	}
-
-	return ttyShareSession
+func (wl *lockedWriter) Write(data []byte) (int, error) {
+	wl.lock.Lock()
+	defer wl.lock.Unlock()
+	return wl.writer.Write(data)
 }
 
 func copyList(l *list.List) *list.List {
@@ -36,123 +37,89 @@ func copyList(l *list.List) *list.List {
 	return newList
 }
 
-func (session *ttyShareSession) WindowSize(cols, rows int) (err error) {
-	msg := MsgTTYWinSize{
-		Cols: cols,
-		Rows: rows,
+func newTTYShareSession(ttyWriter io.Writer) *ttyShareSession {
+
+	ttyShareSession := &ttyShareSession{
+		ttyProtoConnections: list.New(),
+		ttyWriter:           ttyWriter,
 	}
 
-	session.mainRWLock.Lock()
-	session.lastWindowSizeMsg = msg
-	session.mainRWLock.Unlock()
-
-	data, _ := MarshalMsg(msg)
-
-	session.forEachReceiverLock(func(rcvConn *TTYProtocolWriter) bool {
-		_, e := rcvConn.WriteRawData(data)
-		if e != nil {
-			err = e
-		}
-		return true
-	})
-	return
+	return ttyShareSession
 }
 
-func (session *ttyShareSession) Write(buff []byte) (written int, err error) {
-	msg := MsgTTYWrite{
-		Data: buff,
-		Size: len(buff),
-	}
+func (session *ttyShareSession) WindowSize(cols, rows int) error {
+	session.mainRWLock.Lock()
+	session.lastWindowSizeMsg = MsgTTYWinSize{Cols: cols, Rows: rows}
+	session.mainRWLock.Unlock()
 
-	data, _ := MarshalMsg(msg)
-
-	session.forEachReceiverLock(func(rcvConn *TTYProtocolWriter) bool {
-		_, e := rcvConn.WriteRawData(data)
-		if e != nil {
-			err = e
-		}
+	session.forEachReceiverLock(func(rcvConn *TTYProtocolWS) bool {
+		rcvConn.SetWinSize(cols, rows)
 		return true
 	})
+	return nil
+}
 
-	// TODO: fix this
-	written = len(buff)
-	return
+func (session *ttyShareSession) Write(data []byte) (int, error) {
+	session.forEachReceiverLock(func(rcvConn *TTYProtocolWS) bool {
+		rcvConn.Write(data)
+		return true
+	})
+	return len(data), nil
 }
 
 // Runs the callback cb for each of the receivers in the list of the receivers, as it was when
 // this function was called. Note that there might be receivers which might have lost
 // the connection since this function was called.
 // Return false in the callback to not continue for the rest of the receivers
-func (session *ttyShareSession) forEachReceiverLock(cb func(rcvConn *TTYProtocolWriter) bool) {
+func (session *ttyShareSession) forEachReceiverLock(cb func(rcvConn *TTYProtocolWS) bool) {
 	session.mainRWLock.RLock()
 	// TODO: Maybe find a better way?
-	rcvsCopy := copyList(session.ttyReceiverConnections)
+	rcvsCopy := copyList(session.ttyProtoConnections)
 	session.mainRWLock.RUnlock()
 
 	for receiverE := rcvsCopy.Front(); receiverE != nil; receiverE = receiverE.Next() {
-		receiver := receiverE.Value.(*TTYProtocolWriter)
+		receiver := receiverE.Value.(*TTYProtocolWS)
 		if !cb(receiver) {
 			break
 		}
 	}
 }
 
-// quick and dirty locked writer
-type lockedWriter struct {
-	writer io.Writer
-	lock sync.Mutex
-}
-
-func (wl *lockedWriter) Write(data []byte) (int, error) {
-	wl.lock.Lock()
-	defer wl.lock.Unlock()
-	return wl.writer.Write(data)
-}
-
 // Will run on the TTYReceiver connection go routine (e.g.: on the websockets connection routine)
 // When HandleWSConnection will exit, the connection to the TTYReceiver will be closed
-func (session *ttyShareSession) HandleWSConnection(wsConn *WSConnection) {
-	rcvReader := NewTTYProtocolReader(wsConn)
+func (session *ttyShareSession) HandleWSConnection(wsConn *websocket.Conn) {
+	protoConn := NewTTYProtocolWS(wsConn)
 
-	// Gorilla websockets don't allow for concurent writes. Lazy, and perhaps shorter solution
-	// is to wrap a lock around a writer. Maybe later replace it with a channel
-	rcvWriter := NewTTYProtocolWriter(&lockedWriter{
-		writer: wsConn,
-	})
-
-	// Add the receiver to the list of receivers in the seesion, so we need to write-lock
 	session.mainRWLock.Lock()
-	rcvHandleEl := session.ttyReceiverConnections.PushBack(rcvWriter)
-	lastWindowSizeData, _ := MarshalMsg(session.lastWindowSizeMsg)
+	rcvHandleEl := session.ttyProtoConnections.PushBack(protoConn)
+	winSize := session.lastWindowSizeMsg
 	session.mainRWLock.Unlock()
 
-	log.Debugf("New WS connection (%s). Serving ..", wsConn.Address())
+	log.Debugf("New WS connection (%s). Serving ..", wsConn.RemoteAddr().String())
 
 	// Sending the initial size of the window, if we have one
-	rcvWriter.WriteRawData(lastWindowSizeData)
+	protoConn.SetWinSize(winSize.Cols, winSize.Rows)
 
 	// Wait until the TTYReceiver will close the connection on its end
 	for {
-		msg, err := rcvReader.ReadMessage()
+		err := protoConn.ReadAndHandle(
+			func(data []byte) {
+				session.ttyWriter.Write(data)
+			},
+			func(cols, rows int) {
+				// Maybe ask the server side to refresh/repaint the tty window?
+			},
+		)
+
 		if err != nil {
 			log.Debugf("Finished the WS reading loop: %s", err.Error())
 			break
 		}
-
-		// We only support MsgTTYWrite from the web terminal for now
-		if msg.Type != MsgIDWrite {
-			log.Warnf("Unknown message over the WS connection: type %s", msg.Type)
-			break
-		}
-
-		var msgW MsgTTYWrite
-		json.Unmarshal(msg.Data, &msgW)
-		session.ttyWriter.Write(msgW.Data)
 	}
 
 	// Remove the recevier from the list of the receiver of this session, so we need to write-lock
 	session.mainRWLock.Lock()
-	session.ttyReceiverConnections.Remove(rcvHandleEl)
+	session.ttyProtoConnections.Remove(rcvHandleEl)
 	session.mainRWLock.Unlock()
 
 	wsConn.Close()

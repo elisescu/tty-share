@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,7 +11,7 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	ttyServer "github.com/elisescu/tty-share/server"
+	"github.com/elisescu/tty-share/server"
 	"github.com/gorilla/websocket"
 	"github.com/moby/term"
 	log "github.com/sirupsen/logrus"
@@ -20,7 +19,7 @@ import (
 
 type ttyShareClient struct {
 	url        string
-	connection *websocket.Conn
+	wsConn     *websocket.Conn
 	detachKeys string
 	wcChan     chan os.Signal
 	writeFlag  uint32 // used with atomic
@@ -36,7 +35,7 @@ type ttyShareClient struct {
 func newTtyShareClient(url string, detachKeys string) *ttyShareClient {
 	return &ttyShareClient{
 		url:        url,
-		connection: nil,
+		wsConn:     nil,
 		detachKeys: detachKeys,
 		wcChan:     make(chan os.Signal, 1),
 		writeFlag:  1,
@@ -45,15 +44,6 @@ func newTtyShareClient(url string, detachKeys string) *ttyShareClient {
 
 func clearScreen() {
 	fmt.Fprintf(os.Stdout, "\033[H\033[2J")
-}
-
-type wsTextWriter struct {
-	conn *websocket.Conn
-}
-
-func (w *wsTextWriter) Write(data []byte) (n int, err error) {
-	err = w.conn.WriteMessage(websocket.TextMessage, data)
-	return len(data), err
 }
 
 type keyListener struct {
@@ -120,7 +110,7 @@ func (c *ttyShareClient) Run() (err error) {
 
 	log.Debugf("Built the WS URL from the headers: %s", wsURL)
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	c.wsConn, _, err = websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
 		return
 	}
@@ -133,15 +123,12 @@ func (c *ttyShareClient) Run() (err error) {
 
 	state, err := term.MakeRaw(os.Stdin.Fd())
 	defer term.RestoreTerminal(os.Stdin.Fd(), state)
-
-	c.connection = conn
-
 	clearScreen()
-	// start monitoring the size of the terminal
-	signal.Notify(c.wcChan, syscall.SIGWINCH)
-	defer signal.Stop(c.wcChan)
 
 	monitorWinChanges := func() {
+		// start monitoring the size of the terminal
+		signal.Notify(c.wcChan, syscall.SIGWINCH)
+
 		for {
 			select {
 			case <-c.wcChan:
@@ -152,58 +139,48 @@ func (c *ttyShareClient) Run() (err error) {
 		}
 	}
 
+	protoWS := server.NewTTYProtocolWS(c.wsConn)
+
 	readLoop := func() {
+
+		var err error
 		for {
-			var msg ttyServer.MsgAll
-			_, r, err := conn.NextReader()
+			err = protoWS.ReadAndHandle(
+				// onWrite
+				func(data []byte) {
+					if atomic.LoadUint32(&c.writeFlag) != 0 {
+						os.Stdout.Write(data)
+					}
+				},
+				// onWindowSize
+				func(cols, rows int) {
+					c.winSizesMutex.Lock()
+					c.winSizes.remoteW = uint16(cols)
+					c.winSizes.remoteH = uint16(rows)
+					c.winSizesMutex.Unlock()
+					c.updateThisWinSize()
+					c.updateAndDecideStdoutMuted()
+				},
+			)
+
 			if err != nil {
-				log.Debugf("Connection closed")
-				return
-			}
-			err = json.NewDecoder(r).Decode(&msg)
-			if err != nil {
-				log.Errorf("Cannot read JSON: %s", err.Error())
-			}
-
-			switch msg.Type {
-			case ttyServer.MsgIDWrite:
-				var msgWrite ttyServer.MsgTTYWrite
-				err := json.Unmarshal(msg.Data, &msgWrite)
-
-				if err != nil {
-					log.Errorf("Cannot read JSON: %s", err.Error())
+				 log.Errorf("Error parsing remote message: %s", err.Error())
+				if err == io.EOF {
+					// Remote WS connection closed
+					return
 				}
-
-				if atomic.LoadUint32(&c.writeFlag) != 0 {
-					os.Stdout.Write(msgWrite.Data)
-				}
-			case ttyServer.MsgIDWinSize:
-				var msgRemoteWinSize ttyServer.MsgTTYWinSize
-				err := json.Unmarshal(msg.Data, &msgRemoteWinSize)
-				if err != nil {
-					continue
-				}
-				c.winSizesMutex.Lock()
-				c.winSizes.remoteW = uint16(msgRemoteWinSize.Cols)
-				c.winSizes.remoteH = uint16(msgRemoteWinSize.Rows)
-				c.winSizesMutex.Unlock()
-				c.updateThisWinSize()
-				c.updateAndDecideStdoutMuted()
 			}
 		}
 	}
 
 	writeLoop := func() {
-		ww := &wsTextWriter{
-			conn: conn,
-		}
 		kl := &keyListener{
 			wrappedReader: term.NewEscapeProxy(os.Stdin, detachBytes),
 		}
-		_, err := io.Copy(ttyServer.NewTTYProtocolWriter(ww), kl)
+		_, err := io.Copy(protoWS, kl)
 
 		if err != nil {
-			log.Debugf("Connection closed")
+			log.Debugf("Connection closed: %s", err.Error())
 			c.Stop()
 			return
 		}
@@ -218,5 +195,6 @@ func (c *ttyShareClient) Run() (err error) {
 }
 
 func (c *ttyShareClient) Stop() {
-	c.connection.Close()
+	c.wsConn.Close()
+	signal.Stop(c.wcChan)
 }
