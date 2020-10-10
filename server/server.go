@@ -3,9 +3,7 @@ package server
 import (
 	"fmt"
 	"html/template"
-	"io"
 	"mime"
-
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,7 +18,10 @@ const (
 	errorNotAllowed = iota
 )
 
-type NewClientConnectedCB func(string)
+type PTYHandler interface {
+	Write(data []byte) (int, error)
+	Refresh()
+}
 
 // SessionTemplateModel used for templating
 type AASessionTemplateModel struct {
@@ -33,16 +34,15 @@ type AASessionTemplateModel struct {
 type TTYServerConfig struct {
 	FrontListenAddress string
 	FrontendPath       string
-	TTYWriter          io.Writer
+	PTY                PTYHandler
 	SessionID          string
 }
 
 // TTYServer represents the instance of a tty server
 type TTYServer struct {
-	httpServer  *http.Server
-	newClientCB NewClientConnectedCB
-	config      TTYServerConfig
-	session     *ttyShareSession
+	httpServer *http.Server
+	config     TTYServerConfig
+	session    *ttyShareSession
 }
 
 func (server *TTYServer) serveContent(w http.ResponseWriter, r *http.Request, name string) {
@@ -95,12 +95,12 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 			})))
 
 		routesHandler.HandleFunc(fmt.Sprintf("/s/%s/", session), func(w http.ResponseWriter, r *http.Request) {
-			wsPath :=  "/s/" + session + "/ws"
+			wsPath := "/s/" + session + "/ws"
 			pathPrefix := "/s/" + session
 			// Check the frontend/templates/tty-share.in.html file to see where the template applies
 			templateModel := struct {
 				PathPrefix string
-				WSPath    string
+				WSPath     string
 			}{pathPrefix, wsPath}
 
 			// TODO Extract these in constants
@@ -113,7 +113,7 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 			server.handleWebsocket(w, r)
 		})
 		routesHandler.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			templateModel := struct{PathPrefix string }{session}
+			templateModel := struct{ PathPrefix string }{session}
 			server.handleWithTemplateHtml(w, r, "404.in.html", templateModel)
 		})
 	}
@@ -124,7 +124,7 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 	installHandlers(config.SessionID)
 
 	server.httpServer.Handler = routesHandler
-	server.session = newTTYShareSession(config.TTYWriter)
+	server.session = newTTYShareSession(config.PTY)
 
 	return server
 }
@@ -146,7 +146,8 @@ func (server *TTYServer) handleWebsocket(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	server.newClientCB(conn.RemoteAddr().String())
+	// On a new connection, ask for a refresh/redraw of the terminal app
+	server.config.PTY.Refresh()
 	server.session.HandleWSConnection(conn)
 }
 
@@ -174,8 +175,7 @@ func (server *TTYServer) handleWithTemplateHtml(responseWriter http.ResponseWrit
 
 }
 
-func (server *TTYServer) Run(cb NewClientConnectedCB) (err error) {
-	server.newClientCB = cb
+func (server *TTYServer) Run() (err error) {
 	err = server.httpServer.ListenAndServe()
 	log.Debug("Server finished")
 	return
