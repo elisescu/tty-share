@@ -16,11 +16,11 @@ import (
 
 var version string = "0.0.0"
 
-func createServer(frontListenAddress string, frontendPath string, tty io.Writer, sessionID string) *server.TTYServer {
+func createServer(frontListenAddress string, frontendPath string, pty server.PTYHandler, sessionID string) *server.TTYServer {
 	config := ttyServer.TTYServerConfig{
 		FrontListenAddress: frontListenAddress,
 		FrontendPath:       frontendPath,
-		TTYWriter:          tty,
+		PTY:                pty,
 		SessionID:          sessionID,
 	}
 
@@ -28,11 +28,14 @@ func createServer(frontListenAddress string, frontendPath string, tty io.Writer,
 	return server
 }
 
-type nilWriter struct {
+type nilPTY struct {
 }
 
-func (nw *nilWriter) Write(data []byte) (int, error) {
+func (nw *nilPTY) Write(data []byte) (int, error) {
 	return len(data), nil
+}
+
+func (nw *nilPTY) Refresh() {
 }
 
 func main() {
@@ -145,12 +148,12 @@ Flags:
 	ptyMaster := ptyMasterNew()
 	ptyMaster.Start(*commandName, strings.Fields(*commandArgs))
 
-	var writer io.Writer = ptyMaster
+	var pty server.PTYHandler = ptyMaster
 	if *readOnly {
-		writer = &nilWriter{}
+		pty = &nilPTY{}
 	}
 
-	server := createServer(*listenAddress, *frontendPath, writer, sessionID)
+	server := createServer(*listenAddress, *frontendPath, pty, sessionID)
 	if cols, rows, e := ptyMaster.GetWinSize(); e == nil {
 		server.WindowSize(cols, rows)
 	}
@@ -163,9 +166,7 @@ Flags:
 	mw := io.MultiWriter(os.Stdout, server)
 
 	go func() {
-		err := server.Run(func(clientAddr string) {
-			ptyMaster.Refresh()
-		})
+		err := server.Run()
 		if err != nil {
 			log.Debugf("Server done: %s", err.Error())
 		}

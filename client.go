@@ -125,6 +125,8 @@ func (c *ttyShareClient) Run() (err error) {
 	defer term.RestoreTerminal(os.Stdin.Fd(), state)
 	clearScreen()
 
+	protoWS := server.NewTTYProtocolWS(c.wsConn)
+
 	monitorWinChanges := func() {
 		// start monitoring the size of the terminal
 		signal.Notify(c.wcChan, syscall.SIGWINCH)
@@ -132,14 +134,12 @@ func (c *ttyShareClient) Run() (err error) {
 		for {
 			select {
 			case <-c.wcChan:
-				log.Debugf("Detected new win size")
 				c.updateThisWinSize()
 				c.updateAndDecideStdoutMuted()
+				protoWS.SetWinSize(int(c.winSizes.thisW), int(c.winSizes.thisH))
 			}
 		}
 	}
-
-	protoWS := server.NewTTYProtocolWS(c.wsConn)
 
 	readLoop := func() {
 

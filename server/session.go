@@ -14,7 +14,7 @@ type ttyShareSession struct {
 	ttyProtoConnections *list.List
 	isAlive             bool
 	lastWindowSizeMsg   MsgTTYWinSize
-	ttyWriter           io.Writer
+	ptyHandler           PTYHandler
 }
 
 // quick and dirty locked writer
@@ -37,11 +37,11 @@ func copyList(l *list.List) *list.List {
 	return newList
 }
 
-func newTTYShareSession(ttyWriter io.Writer) *ttyShareSession {
+func newTTYShareSession(ptyHandler PTYHandler) *ttyShareSession {
 
 	ttyShareSession := &ttyShareSession{
 		ttyProtoConnections: list.New(),
-		ttyWriter:           ttyWriter,
+		ptyHandler:           ptyHandler,
 	}
 
 	return ttyShareSession
@@ -104,10 +104,10 @@ func (session *ttyShareSession) HandleWSConnection(wsConn *websocket.Conn) {
 	for {
 		err := protoConn.ReadAndHandle(
 			func(data []byte) {
-				session.ttyWriter.Write(data)
+				session.ptyHandler.Write(data)
 			},
 			func(cols, rows int) {
-				// Maybe ask the server side to refresh/repaint the tty window?
+				session.ptyHandler.Refresh()
 			},
 		)
 
