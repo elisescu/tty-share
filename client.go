@@ -125,7 +125,7 @@ func (c *ttyShareClient) Run() (err error) {
 	defer term.RestoreTerminal(os.Stdin.Fd(), state)
 	clearScreen()
 
-	protoWS := server.NewTTYProtocolWS(c.wsConn)
+	protoWS := server.NewTTYProtocolWSLocked(c.wsConn)
 
 	monitorWinChanges := func() {
 		// start monitoring the size of the terminal

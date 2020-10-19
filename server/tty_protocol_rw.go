@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"io"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
@@ -31,12 +32,13 @@ type MsgTTYWinSize struct {
 type OnMsgWrite func(data []byte)
 type OnMsgWinSize func(cols, rows int)
 
-type TTYProtocolWS struct {
+type TTYProtocolWSLocked struct {
 	ws      *websocket.Conn
+	lock    sync.Mutex
 }
 
-func NewTTYProtocolWS(ws *websocket.Conn) *TTYProtocolWS {
-	return &TTYProtocolWS{
+func NewTTYProtocolWSLocked(ws *websocket.Conn) *TTYProtocolWSLocked {
+	return &TTYProtocolWSLocked{
 		ws:      ws,
 	}
 }
@@ -67,7 +69,7 @@ func marshalMsg(aMessage interface{}) (_ []byte, err error) {
 }
 
 
-func (handler *TTYProtocolWS) ReadAndHandle(onWrite OnMsgWrite, onWinSize OnMsgWinSize) (err error) {
+func (handler *TTYProtocolWSLocked) ReadAndHandle(onWrite OnMsgWrite, onWinSize OnMsgWinSize) (err error) {
 	var msg MsgWrapper
 
 	_, r, err := handler.ws.NextReader()
@@ -99,21 +101,24 @@ func (handler *TTYProtocolWS) ReadAndHandle(onWrite OnMsgWrite, onWinSize OnMsgW
 	return
 }
 
-func (handler *TTYProtocolWS) SetWinSize(cols, rows int) error {
+func (handler *TTYProtocolWSLocked) SetWinSize(cols, rows int) (err error) {
 	msgWinChanged := MsgTTYWinSize{
 		Cols: cols,
 		Rows: rows,
 	}
 	data, err := marshalMsg(msgWinChanged)
 	if err != nil {
-		return err
+		return
 	}
 
-	return handler.ws.WriteMessage(websocket.TextMessage, data)
+	handler.lock.Lock()
+	err = handler.ws.WriteMessage(websocket.TextMessage, data)
+	handler.lock.Unlock()
+	return
 }
 
 // Function to send data from one the sender to the server and the other way around.
-func (handler *TTYProtocolWS) Write(buff []byte) (int, error) {
+func (handler *TTYProtocolWSLocked) Write(buff []byte) (n int, err error) {
 	msgWrite := MsgTTYWrite{
 		Data: buff,
 		Size: len(buff),
@@ -123,5 +128,8 @@ func (handler *TTYProtocolWS) Write(buff []byte) (int, error) {
 		return 0, err
 	}
 
-	return len(buff), handler.ws.WriteMessage(websocket.TextMessage, data)
+	handler.lock.Lock()
+	n, err = len(buff), handler.ws.WriteMessage(websocket.TextMessage, data)
+	handler.lock.Unlock()
+	return
 }
