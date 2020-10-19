@@ -2,7 +2,6 @@ package server
 
 import (
 	"container/list"
-	"io"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -15,18 +14,6 @@ type ttyShareSession struct {
 	isAlive             bool
 	lastWindowSizeMsg   MsgTTYWinSize
 	ptyHandler           PTYHandler
-}
-
-// quick and dirty locked writer
-type lockedWriter struct {
-	writer io.Writer
-	lock   sync.Mutex
-}
-
-func (wl *lockedWriter) Write(data []byte) (int, error) {
-	wl.lock.Lock()
-	defer wl.lock.Unlock()
-	return wl.writer.Write(data)
 }
 
 func copyList(l *list.List) *list.List {
@@ -52,7 +39,7 @@ func (session *ttyShareSession) WindowSize(cols, rows int) error {
 	session.lastWindowSizeMsg = MsgTTYWinSize{Cols: cols, Rows: rows}
 	session.mainRWLock.Unlock()
 
-	session.forEachReceiverLock(func(rcvConn *TTYProtocolWS) bool {
+	session.forEachReceiverLock(func(rcvConn *TTYProtocolWSLocked) bool {
 		rcvConn.SetWinSize(cols, rows)
 		return true
 	})
@@ -60,7 +47,7 @@ func (session *ttyShareSession) WindowSize(cols, rows int) error {
 }
 
 func (session *ttyShareSession) Write(data []byte) (int, error) {
-	session.forEachReceiverLock(func(rcvConn *TTYProtocolWS) bool {
+	session.forEachReceiverLock(func(rcvConn *TTYProtocolWSLocked) bool {
 		rcvConn.Write(data)
 		return true
 	})
@@ -71,14 +58,14 @@ func (session *ttyShareSession) Write(data []byte) (int, error) {
 // this function was called. Note that there might be receivers which might have lost
 // the connection since this function was called.
 // Return false in the callback to not continue for the rest of the receivers
-func (session *ttyShareSession) forEachReceiverLock(cb func(rcvConn *TTYProtocolWS) bool) {
+func (session *ttyShareSession) forEachReceiverLock(cb func(rcvConn *TTYProtocolWSLocked) bool) {
 	session.mainRWLock.RLock()
 	// TODO: Maybe find a better way?
 	rcvsCopy := copyList(session.ttyProtoConnections)
 	session.mainRWLock.RUnlock()
 
 	for receiverE := rcvsCopy.Front(); receiverE != nil; receiverE = receiverE.Next() {
-		receiver := receiverE.Value.(*TTYProtocolWS)
+		receiver := receiverE.Value.(*TTYProtocolWSLocked)
 		if !cb(receiver) {
 			break
 		}
@@ -88,7 +75,7 @@ func (session *ttyShareSession) forEachReceiverLock(cb func(rcvConn *TTYProtocol
 // Will run on the TTYReceiver connection go routine (e.g.: on the websockets connection routine)
 // When HandleWSConnection will exit, the connection to the TTYReceiver will be closed
 func (session *ttyShareSession) HandleWSConnection(wsConn *websocket.Conn) {
-	protoConn := NewTTYProtocolWS(wsConn)
+	protoConn := NewTTYProtocolWSLocked(wsConn)
 
 	session.mainRWLock.Lock()
 	rcvHandleEl := session.ttyProtoConnections.PushBack(protoConn)
