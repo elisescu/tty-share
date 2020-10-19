@@ -164,7 +164,7 @@ func (c *ttyShareClient) Run() (err error) {
 			)
 
 			if err != nil {
-				 log.Errorf("Error parsing remote message: %s", err.Error())
+				log.Errorf("Error parsing remote message: %s", err.Error())
 				if err == io.EOF {
 					// Remote WS connection closed
 					return
