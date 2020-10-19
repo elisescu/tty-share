@@ -64,8 +64,8 @@ func (c *ttyShareClient) updateAndDecideStdoutMuted() {
 	if c.winSizes.thisH < c.winSizes.remoteH || c.winSizes.thisW < c.winSizes.remoteW {
 		atomic.StoreUint32(&c.writeFlag, 0)
 		clearScreen()
-		fmt.Printf("\r\n\nYour terminal window has to be bigger than %dx%d\r\nDetach with <%s>, resize your window, and reconect.\r\n",
-			c.winSizes.remoteW, c.winSizes.remoteH, c.detachKeys)
+		messageFormat := "\n\rYour window is smaller than the remote window. Please resize.\n\r\tRemote window: %dx%d \n\r\tYour window:   %dx%d \n\r"
+		fmt.Printf(messageFormat, c.winSizes.remoteW, c.winSizes.remoteH, c.winSizes.thisW, c.winSizes.thisH)
 	} else {
 		if atomic.LoadUint32(&c.writeFlag) == 0 { // clear the screen when changing back to "write"
 			// TODO: notify the remote side to "refresh" the content.
