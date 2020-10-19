@@ -101,7 +101,10 @@ func (pty *ptyMaster) Refresh() {
 
 func (pty *ptyMaster) Wait() (err error) {
 	err = pty.command.Wait()
-	// The terminal has to be restored from the RAW state, to its initial state
+	return
+}
+
+func (pty *ptyMaster) Restore() {
 	terminal.Restore(0, pty.terminalInitState)
 	return
 }

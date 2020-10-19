@@ -146,6 +146,8 @@ Flags:
 	bufio.NewReader(os.Stdin).ReadString('\n')
 
 	ptyMaster := ptyMasterNew()
+	defer ptyMaster.Restore()
+
 	ptyMaster.Start(*commandName, strings.Fields(*commandArgs))
 
 	var pty server.PTYHandler = ptyMaster
