@@ -18,12 +18,12 @@ import (
 )
 
 type ttyShareClient struct {
-	url        string
-	wsConn     *websocket.Conn
-	detachKeys string
-	wcChan     chan os.Signal
-	writeFlag  uint32 // used with atomic
-	winSizes   struct {
+	url          string
+	wsConn       *websocket.Conn
+	detachKeys   string
+	wcChan       chan os.Signal
+	ioFlagAtomic uint32 // used with atomic
+	winSizes     struct {
 		thisW   uint16
 		thisH   uint16
 		remoteW uint16
@@ -34,11 +34,11 @@ type ttyShareClient struct {
 
 func newTtyShareClient(url string, detachKeys string) *ttyShareClient {
 	return &ttyShareClient{
-		url:        url,
-		wsConn:     nil,
-		detachKeys: detachKeys,
-		wcChan:     make(chan os.Signal, 1),
-		writeFlag:  1,
+		url:          url,
+		wsConn:       nil,
+		detachKeys:   detachKeys,
+		wcChan:       make(chan os.Signal, 1),
+		ioFlagAtomic: 1,
 	}
 }
 
@@ -48,6 +48,7 @@ func clearScreen() {
 
 type keyListener struct {
 	wrappedReader io.Reader
+	ioFlagAtomicP *uint32
 }
 
 func (kl *keyListener) Read(data []byte) (n int, err error) {
@@ -55,6 +56,13 @@ func (kl *keyListener) Read(data []byte) (n int, err error) {
 	if _, ok := err.(term.EscapeError); ok {
 		log.Debug("Escape code detected.")
 	}
+
+	// If we are not supposed to do any IO, then return 0 bytes read. This happens the local
+	// window is smaller than the remote one
+	if atomic.LoadUint32(kl.ioFlagAtomicP) == 0 {
+		return 0, err
+	}
+
 	return
 }
 
@@ -62,16 +70,16 @@ func (c *ttyShareClient) updateAndDecideStdoutMuted() {
 	log.Infof("This window: %dx%d. Remote window: %dx%d", c.winSizes.thisW, c.winSizes.thisH, c.winSizes.remoteW, c.winSizes.remoteH)
 
 	if c.winSizes.thisH < c.winSizes.remoteH || c.winSizes.thisW < c.winSizes.remoteW {
-		atomic.StoreUint32(&c.writeFlag, 0)
+		atomic.StoreUint32(&c.ioFlagAtomic, 0)
 		clearScreen()
-		messageFormat := "\n\rYour window is smaller than the remote window. Please resize.\n\r\tRemote window: %dx%d \n\r\tYour window:   %dx%d \n\r"
+		messageFormat := "\n\rYour window is smaller than the remote window. Please resize or press <C-o C-c> to detach.\n\r\tRemote window: %dx%d \n\r\tYour window:   %dx%d \n\r"
 		fmt.Printf(messageFormat, c.winSizes.remoteW, c.winSizes.remoteH, c.winSizes.thisW, c.winSizes.thisH)
 	} else {
-		if atomic.LoadUint32(&c.writeFlag) == 0 { // clear the screen when changing back to "write"
+		if atomic.LoadUint32(&c.ioFlagAtomic) == 0 { // clear the screen when changing back to "write"
 			// TODO: notify the remote side to "refresh" the content.
 			clearScreen()
 		}
-		atomic.StoreUint32(&c.writeFlag, 1)
+		atomic.StoreUint32(&c.ioFlagAtomic, 1)
 	}
 }
 
@@ -148,7 +156,7 @@ func (c *ttyShareClient) Run() (err error) {
 			err = protoWS.ReadAndHandle(
 				// onWrite
 				func(data []byte) {
-					if atomic.LoadUint32(&c.writeFlag) != 0 {
+					if atomic.LoadUint32(&c.ioFlagAtomic) != 0 {
 						os.Stdout.Write(data)
 					}
 				},
@@ -176,6 +184,7 @@ func (c *ttyShareClient) Run() (err error) {
 	writeLoop := func() {
 		kl := &keyListener{
 			wrappedReader: term.NewEscapeProxy(os.Stdin, detachBytes),
+			ioFlagAtomicP: &c.ioFlagAtomic,
 		}
 		_, err := io.Copy(protoWS, kl)
 
