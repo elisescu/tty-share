@@ -31,15 +31,6 @@ func isStdinTerminal() bool {
 }
 
 func (pty *ptyMaster) Start(command string, args []string) (err error) {
-	// Save the initial state of the terminal, before making it RAW. Note that this terminal is the
-	// terminal under which the tty-share command has been started, and it's identified via the
-	// stdin file descriptor (0 in this case)
-	// We need to make this terminal RAW so that when the command (passed here as a string, a shell
-	// usually), is receiving all the input, including the special characters:
-	// so no SIGINT for Ctrl-C, but the RAW character data, so no line discipline.
-	// Read more here: https://www.linusakesson.net/programming/tty/
-	pty.terminalInitState, err = terminal.MakeRaw(0)
-
 	pty.command = exec.Command(command, args...)
 	pty.ptyFile, err = ptyDevice.Start(pty.command)
 
@@ -50,6 +41,19 @@ func (pty *ptyMaster) Start(command string, args []string) (err error) {
 	// Set the initial window size
 	cols, rows, err := terminal.GetSize(0)
 	pty.SetWinSize(rows, cols)
+	return
+}
+
+func (pty *ptyMaster) MakeRaw() (err error) {
+
+	// Save the initial state of the terminal, before making it RAW. Note that this terminal is the
+	// terminal under which the tty-share command has been started, and it's identified via the
+	// stdin file descriptor (0 in this case)
+	// We need to make this terminal RAW so that when the command (passed here as a string, a shell
+	// usually), is receiving all the input, including the special characters:
+	// so no SIGINT for Ctrl-C, but the RAW character data, so no line discipline.
+	// Read more here: https://www.linusakesson.net/programming/tty/
+	pty.terminalInitState, err = terminal.MakeRaw(int(os.Stdin.Fd()))
 	return
 }
 

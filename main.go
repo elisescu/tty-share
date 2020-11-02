@@ -125,6 +125,13 @@ Flags:
 		os.Exit(1)
 	}
 
+	ptyMaster := ptyMasterNew()
+	err := ptyMaster.Start(*commandName, strings.Fields(*commandArgs))
+	if err != nil {
+		log.Errorf("Cannot start the %s command: %s", *commandName, err.Error())
+		return
+	}
+
 	sessionID := "local"
 	if *publicSession {
 		proxy, err := proxy.NewProxyConnection(*listenAddress, *proxyServerAddress, *noTLS)
@@ -145,11 +152,8 @@ Flags:
 	fmt.Printf("Press Enter to continue!\n")
 	bufio.NewReader(os.Stdin).ReadString('\n')
 
-	ptyMaster := ptyMasterNew()
+	ptyMaster.MakeRaw()
 	defer ptyMaster.Restore()
-
-	ptyMaster.Start(*commandName, strings.Fields(*commandArgs))
-
 	var pty server.PTYHandler = ptyMaster
 	if *readOnly {
 		pty = &nilPTY{}
