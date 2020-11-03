@@ -181,7 +181,6 @@ Flags:
 	go func() {
 		_, err := io.Copy(mw, ptyMaster)
 		if err != nil {
-			log.Error("Lost connection with the server.\n")
 			ptyMaster.Stop()
 		}
 	}()
@@ -191,6 +190,6 @@ Flags:
 	}()
 
 	ptyMaster.Wait()
-	fmt.Printf("tty-share finished\n\n")
+	fmt.Printf("tty-share finished\n\n\r")
 	server.Stop()
 }
