@@ -2,60 +2,73 @@
 
 # tty-share
 
-It is a very simple command line tool that gives remote access to a UNIX terminal session. It's using the [PTY](https://en.wikipedia.org/wiki/Pseudoterminal) system, so it should work on any *UNIX* system (Linux, OSX). Because it's written in GO, the tool will be a single binary, with no dependencies, which will also work on your ARM Raspberry Pi.
+[tty-share](https://tty-share.com) is a very simple tool used to share your Linux/OSX terminal over the Internet. It is written in GO, results in a static cross-platform binary with no dependencies, and therefore will also work on your Raspberry Pi.
 
-The most important part about it is that it requires **no setup** on the remote end. All I need to give remote access to the terminal (a bash/shell session) is the binary tool, and the remote person only needs to open a secret URL in their browser.
+The remote participant needs **not setup**, and they can join the session from the browser or from the terminal (`tty-share <secret URL>`). The session can be shared either over the Internet, or only in the local network. When sharing it over the Internet (outside your NAT), `tty-share` will connect to [proxy server](https://github.com/elisescu/tty-proxy) that will mediate the communication between the participants. An instance of this server runs at [tty-share.com](https://tty-share.com), but you can run your own.
 
-The project consists of two command line utilities: `tty-share` and `tty-server`. The server side has been moved to [github.com/elisescu/tty-server](https://github.com/elisescu/tty-server) repo, so it's easier to build the `tty-share` tool separately.
+## Demos
 
-The `tty-share` is used on the machine that wants to share the terminal, and it connects to the server to generate a secret URL, over which the terminal can be viewed in the browser.
+*Local network session*
+![demo](doc/local.gif)
 
-An instance of the server runs at [tty-share.com](https://tty-share.com), so you only need the `tty-server` binary if you want to host it yourself.
+*Public session*
+![demo](doc/public.gif)
 
-![demo](doc/demo.gif)
+*Join a session from another terminal*
+![demo](doc/terminal.gif)
 
-## More documentation
+## Installing and running
 
-The documentation is very poor now. More will follow. [This](doc/architecture.md) describes briefly some thoughts behind the architecture of the project.
+**Docker**
 
-## Running
-
-Download the latest `tty-share` binary [release](https://github.com/elisescu/tty-share/releases), and run it:
-
-```
-bash$ tty-share
-Web terminal: https://go.tty-share.com/s/J5U6FAwChWNP0I9VQ9XyPqVD6m6IpI8-sBLRiz98XMA=
-
-bash$
+If you only want to try it out, there's a Docker image you can use:
+```bash
+docker run -it elisescu/tty-share --public
 ```
 
-## Building `tty-share` locally
+**Brew**
 
-If you want to just build the tool that shares your terminal, and not the server, then simply do a
+If you are on OSX and use [brew](https://brew.sh/), then you can simply do a `brew install tty-share`.
 
+**Binary releases**
+
+Otherwise, download the latest `tty-share` binary [release](https://github.com/elisescu/tty-share/releases), and run it:
+
+**Running it**
+```
+~ $ tty-share --public
+public session: https://on.tty-share.com/s/L8d2ECvHLhU8CXEBaEF5WKV8O3jsZkS5sXwG1__--2_jnFSlGonzXBe0qxd7tZeRvQM/
+local session: http://localhost:8000/s/local/
+Press Enter to continue!
+
+~ $
+```
+
+Sessions can be created as read only, with the `--readonly` flag. See `--help` for more.
+
+**Join a session**
+
+You can join a session by opening the session URLs in the browser, or with another `tty-share` command:
+```bash
+~ $ tty-share https://on.tty-share.com/s/L8d2ECvHLhU8CXEBaEF5WKV8O3jsZkS5sXwG1__--2_jnFSlGonzXBe0qxd7tZeRvQM/
+```
+
+## Building
+
+Simply run
 ```
 go get github.com/elisescu/tty-share
 ```
 
-For cross-compilation you can use the GO building [environment variables](https://golang.org/doc/install/source#environment). For example, to build the `tty-share` for raspberrypi, you can do `GOOS=linux GOARCH=arm GOARM=6 make out/tty-share` (you can check your raspberrypi arch with `uname -a`).
+The frontend code (the code that runs in the browser session) lives under `server/frontend`, and it is compiled into `server/assets_bundle.go` go file, committed to this git repo. To rebuild this bundle of web resources, make sure you have `node` and `npm` installed, and then run: `make -C server frontend`. Unless you change the browser/frontend code, you don't need to do this - the code is already precompiled and bundled in `assets_bundle.go`.
+
+For cross-compilation you can use the GO building [environment variables](https://golang.org/doc/install/source#environment). For example, to build the `tty-share` for raspberrypi, you can do `GOOS=linux GOARCH=arm GOARM=6 go build` (check your raspberrypi arch with `uname -a`).
 
 ## Security
 
 `tty-share` connects over a TLS connection to the server, which uses a proxy for the SSL termination, and the browser terminal is served over HTTPS. The communication on both sides is encrypted and secured, in the same way as other similar tools are doing it (e.g. tmate, VSC, etc).
 
-However, end-to-end encryption is still desired, so nothing but the sender and receiver can decrypt the data passed around.
-
-## TODO
-
-There are several improvements, and additions that can be done further:
-  * Update and write more tests.
-  * Add support for listening on sender connections over TLS.
-  * React on the `tty-receiver` window size as well. For now, the size of the terminal window is decided by the `tty-share`, but perhaps both the sender and receiver should have a say in this.
-  * Read only sessions, where the `tty_receiver` side can only watch, and cannot interact with the terminal session.
-  * Command line `tty_receiver` can be implemented as well, without the need of a browser.
-  * End-to-end encryption. Right now, the server can see what messages the sender and receiver are exchanging, but an end-to-end encryption layer can be built on top of this. It has been thought from the beginning, but it's just not implemented. The terminal IO messages are packed in protocol messages, and the payload can be easily encrypted with a shared key derived from a password that only the sender and receiver know.
-  * Notify the `tty-share` user when a `tty-receiver` got connected (when the remote person opened the URL in their browser).
-  * Many other
+However, end-to-end encryption is on the TODO list. Otherwise, if you don't trust my [tty-proxy](https://github.com/elisescu/tty-proxy) installation, you can run your own.
 
 
 ## Similar solutions
@@ -70,7 +83,7 @@ However, the two disadvantages with this tool are the need of logging in with a 
 
 This is a great tool, and I used it quite a few times before. At the time I started my project, [tmate.io](https://tmate.io) didn't have the option to join the session from the browser, and one had to use `ssh`. In most cases, `ssh` is not a problem at all - in fact it's even preferred, but there are cases when you just don't have easy access to an `ssh` client, e.g.: joining from a Windows machine, or from your smartphone. In the meantime, the project added some support for joining a terminal session in the browser too.
 
-Perhaps one downside with *tmate* is that it comes with quite a few dependencies which can make your life complicated if you want to compile it for ARM, for example. Running it on my raspberry pi might not be as simple as you want it, unless you use Debian.
+Perhaps one downside with *tmate* is that it comes with quite a few dependencies which can make your life complicated if you want to compile it for ARM, for example. Running it on a raspberry pi might not be as simple as you want it, unless you use Debian.
 
 ## Credits
 
