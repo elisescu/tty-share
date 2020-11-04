@@ -88,6 +88,8 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 	routesHandler := mux.NewRouter()
 
 	installHandlers := func(session string) {
+		// This function installs handlers for paths that contain the "session" passed as a
+		// parameter. The paths are for the static files, websockets, and other.
 		path := fmt.Sprintf("/s/%s/static/", session)
 		routesHandler.PathPrefix(path).Handler(http.StripPrefix(path,
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +115,7 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 			server.handleWebsocket(w, r)
 		})
 		routesHandler.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			templateModel := struct{ PathPrefix string }{session}
+			templateModel := struct{ PathPrefix string }{fmt.Sprintf("/s/%s", session)}
 			server.handleWithTemplateHtml(w, r, "404.in.html", templateModel)
 		})
 	}
