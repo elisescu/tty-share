@@ -152,8 +152,13 @@ Flags:
 	fmt.Printf("Press Enter to continue!\n")
 	bufio.NewReader(os.Stdin).ReadString('\n')
 
+	stopPtyAndRestore := func () {
+		ptyMaster.Stop()
+		ptyMaster.Restore()
+	}
+
 	ptyMaster.MakeRaw()
-	defer ptyMaster.Restore()
+	defer stopPtyAndRestore()
 	var pty server.PTYHandler = ptyMaster
 	if *readOnly {
 		pty = &nilPTY{}
@@ -171,22 +176,27 @@ Flags:
 
 	mw := io.MultiWriter(os.Stdout, server)
 
+
 	go func() {
 		err := server.Run()
 		if err != nil {
-			log.Debugf("Server done: %s", err.Error())
+			stopPtyAndRestore()
+			log.Errorf("Server finished: %s", err.Error())
 		}
 	}()
 
 	go func() {
 		_, err := io.Copy(mw, ptyMaster)
 		if err != nil {
-			ptyMaster.Stop()
+			stopPtyAndRestore()
 		}
 	}()
 
 	go func() {
-		io.Copy(ptyMaster, os.Stdin)
+		_, err := io.Copy(ptyMaster, os.Stdin)
+		if err != nil {
+			stopPtyAndRestore()
+		}
 	}()
 
 	ptyMaster.Wait()
