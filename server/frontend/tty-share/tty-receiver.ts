@@ -15,10 +15,11 @@ class TTYReceiver {
         console.log("Opening WS connection to ", wsAddress)
         const connection = new WebSocket(wsAddress);
 
+        // TODO: expose some of these options in the UI
         this.xterminal = new Terminal({
             cursorBlink: true,
             macOptionIsMeta: true,
-            scrollback: 0,
+            scrollback: 1000,
             fontSize: 12,
             letterSpacing: 0,
         });
@@ -35,7 +36,6 @@ class TTYReceiver {
            setTimeout(() => {
             this.xterminal.write('Session closed');
            }, 1000)
-
         }
 
         this.xterminal.focus();
