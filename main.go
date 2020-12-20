@@ -125,14 +125,8 @@ Flags:
 		os.Exit(1)
 	}
 
-	ptyMaster := ptyMasterNew()
-	err := ptyMaster.Start(*commandName, strings.Fields(*commandArgs))
-	if err != nil {
-		log.Errorf("Cannot start the %s command: %s", *commandName, err.Error())
-		return
-	}
-
-	sessionID := "local"
+	sessionID := ""
+	publicURL := ""
 	if *publicSession {
 		proxy, err := proxy.NewProxyConnection(*listenAddress, *proxyServerAddress, *noTLS)
 		if err != nil {
@@ -142,12 +136,35 @@ Flags:
 
 		go proxy.RunProxy()
 		sessionID = proxy.SessionID
-		fmt.Printf("public session: %s\n", proxy.PublicURL)
+		publicURL = proxy.PublicURL
 		defer proxy.Stop()
+	}
+
+	envVars := os.Environ()
+	envVars = append(envVars,
+		fmt.Sprintf("TTY_SHARE_LOCAL_URL=http://%s", *listenAddress),
+		fmt.Sprintf("TTY_SHARE=1", os.Getpid()),
+	)
+
+	if publicURL != "" {
+		envVars = append(envVars,
+			fmt.Sprintf("TTY_SHARE_PUBLIC_URL=%s", publicURL),
+		)
+	}
+
+	ptyMaster := ptyMasterNew()
+	err := ptyMaster.Start(*commandName, strings.Fields(*commandArgs), envVars)
+	if err != nil {
+		log.Errorf("Cannot start the %s command: %s", *commandName, err.Error())
+		return
 	}
 
 	// Display the session information to the user, before showing any output from the command.
 	// Wait until the user presses Enter
+	if publicURL != "" {
+		fmt.Printf("public session: %s\n", publicURL)
+	}
+
 	fmt.Printf("local session: http://%s/s/local/\n", *listenAddress)
 	fmt.Printf("Press Enter to continue!\n")
 	bufio.NewReader(os.Stdin).ReadString('\n')

@@ -30,8 +30,9 @@ func isStdinTerminal() bool {
 	return terminal.IsTerminal(0)
 }
 
-func (pty *ptyMaster) Start(command string, args []string) (err error) {
+func (pty *ptyMaster) Start(command string, args []string, envVars []string) (err error) {
 	pty.command = exec.Command(command, args...)
+	pty.command.Env = envVars
 	pty.ptyFile, err = ptyDevice.Start(pty.command)
 
 	if err != nil {
