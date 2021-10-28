@@ -1,0 +1,73 @@
+# bash completion for tty-share                            -*- shell-script -*-
+
+_tty-share()
+{
+        local cur prev OPTS
+        COMPREPLY=()
+        cur="${COMP_WORDS[COMP_CWORD]}"
+        prev="${COMP_WORDS[COMP_CWORD-1]}"
+        case $prev in
+                '-args'|'--args')
+                        COMPREPLY=( $(compgen -W "string" -- $cur) )
+                        return 0
+                        ;;
+                '-command'|'--command')
+                        COMPREPLY=( $(compgen -W "/bin/bash" -- $cur) )
+                        return 0
+                        ;;
+                '-detach-keys'|'--detach-keys')
+                        COMPREPLY=( $(compgen -W "string" -- $cur) )
+                        return 0
+                        ;;
+                '-frontend-path'|'--frontend-path')
+                        COMPREPLY=( $(compgen -W "string" -- $cur) )
+                        return 0
+                        ;;
+                '-listen'|'--listen')
+                        COMPREPLY=( $(compgen -W "localhost:8000" -- $cur) )
+                        return 0
+                        ;;
+                '-logfile'|'--logfile')
+                        COMPREPLY=( $(compgen -W "-" -- $cur) )
+                        return 0
+                        ;;
+                '-no-tls'|'--no-tls')
+                        return 0
+                        ;;
+                '-public'|'--public')
+                        return 0
+                        ;;
+                '-readonly'|'--readonly')
+                        return 0
+                        ;;
+                '-tty-proxy'|'--tty-proxy')
+                        COMPREPLY=( $(compgen -W "on.tty-share.com:4567" -- $cur) )
+                        return 0
+                        ;;
+                '-verbose'|'--verbose')
+                        return 0
+                        ;;
+                '-version'|'--version')
+                        return 0
+                        ;;
+        esac
+        case $cur in
+                -*)
+                        OPTS="--args
+                              --command
+                              --detach-keys
+                              --frontend-path
+                              --listen
+                              --logfile
+                              --no-tls
+                              --public
+                              --readonly
+                              --tty-proxy
+                              --verbose
+                              --version"
+                        COMPREPLY=( $(compgen -W "${OPTS[*]}" -- $cur) )
+                        return 0
+                        ;;
+        esac
+}
+complete -F _tty-share tty-share
