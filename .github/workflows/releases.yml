@@ -1,0 +1,37 @@
+---
+name: releases
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  gh_tagged_release:
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: "Checkout source code"
+        uses: "actions/checkout@v2.3.4"
+        with:
+          lfs: true
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.15
+
+      - name: Build for Linux-amd64
+        run: GOOS=linux GOARCH=amd64 go build -x -v -mod=vendor -ldflags "-X main.version=$(echo ${GITHUB_REF} |  awk -F/ '{print substr($3,2,10);}') -w -s" -o tty-share_linux-amd64
+      - name: Build for Linux-i386
+        run: GOOS=linux GOARCH=386 go build -x -v -mod=vendor -ldflags "-X main.version=$(echo ${GITHUB_REF} |  awk -F/ '{print substr($3,2,10);}') -w -s" -o tty-share_linux-i386
+      - name: Build for Darwin-amd64
+        run: GOOS=darwin GOARCH=amd64 go build -x -v -mod=vendor -ldflags "-X main.version=$(echo ${GITHUB_REF} | awk -F/ '{print substr($3,2,10);}') -w -s" -o tty-share_darwin-amd64
+
+      - uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          prerelease: false
+          files: |
+            tty-share_*
+        id: "automatic_releases"
