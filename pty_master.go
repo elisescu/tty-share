@@ -20,10 +20,13 @@ type ptyMaster struct {
 	ptyFile           *os.File
 	command           *exec.Cmd
 	terminalInitState *terminal.State
+	headless          bool
+	headlessCols      int
+	headlessRows      int
 }
 
-func ptyMasterNew() *ptyMaster {
-	return &ptyMaster{}
+func ptyMasterNew(headless bool, headlessCols, headlessRows int) *ptyMaster {
+	return &ptyMaster{headless: headless, headlessCols: headlessCols, headlessRows: headlessRows}
 }
 
 func isStdinTerminal() bool {
@@ -40,12 +43,21 @@ func (pty *ptyMaster) Start(command string, args []string, envVars []string) (er
 	}
 
 	// Set the initial window size
-	cols, rows, err := terminal.GetSize(0)
+	cols, rows := pty.headlessCols, pty.headlessRows
+
+	if !pty.headless {
+		cols, rows, err = terminal.GetSize(0)
+	}
+
 	pty.SetWinSize(rows, cols)
 	return
 }
 
 func (pty *ptyMaster) MakeRaw() (err error) {
+	// don't do anything if running headless
+	if pty.headless {
+		return nil
+	}
 
 	// Save the initial state of the terminal, before making it RAW. Note that this terminal is the
 	// terminal under which the tty-share command has been started, and it's identified via the
@@ -59,20 +71,25 @@ func (pty *ptyMaster) MakeRaw() (err error) {
 }
 
 func (pty *ptyMaster) SetWinChangeCB(winChangedCB onWindowChangedCB) {
-	// Start listening for window changes
-	go onWindowChanges(func(cols, rows int) {
-		// TODO:policy: should the server decide here if we care about the size and set it
-		// right here?
-		pty.SetWinSize(rows, cols)
+	// Start listening for window changes if not running headless
+	if !pty.headless {
+		go onWindowChanges(func(cols, rows int) {
+			// TODO:policy: should the server decide here if we care about the size and set it
+			// right here?
+			pty.SetWinSize(rows, cols)
 
-		// Notify the ptyMaster user of the window changes, to be sent to the remote side
-		winChangedCB(cols, rows)
-	})
+			// Notify the ptyMaster user of the window changes, to be sent to the remote side
+			winChangedCB(cols, rows)
+		})
+	}
 }
 
 func (pty *ptyMaster) GetWinSize() (int, int, error) {
-	cols, rows, err := terminal.GetSize(0)
-	return cols, rows, err
+	if pty.headless {
+		return pty.headlessCols, pty.headlessRows, nil
+	} else {
+		return terminal.GetSize(0)
+	}
 }
 
 func (pty *ptyMaster) Write(b []byte) (int, error) {
@@ -110,7 +127,9 @@ func (pty *ptyMaster) Wait() (err error) {
 }
 
 func (pty *ptyMaster) Restore() {
-	terminal.Restore(0, pty.terminalInitState)
+	if !pty.headless {
+		terminal.Restore(0, pty.terminalInitState)
+	}
 	return
 }
 
