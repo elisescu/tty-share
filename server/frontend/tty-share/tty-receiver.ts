@@ -31,7 +31,7 @@ class TTYReceiver {
         connection.onclose =  (evt: CloseEvent) => {
 
            this.xterminal.blur();
-           this.xterminal.setOption('cursorBlink', false);
+           this.xterminal.options.cursorBlink = false
            this.xterminal.clear();
 
            setTimeout(() => {
@@ -43,17 +43,16 @@ class TTYReceiver {
 
         const containerPixSize = this.getElementPixelsSize(container);
         const newFontSize = this.guessNewFontSize(this.xterminal.cols, this.xterminal.rows, containerPixSize.width, containerPixSize.height);
-        this.xterminal.setOption('fontSize', newFontSize);
+        this.xterminal.options.fontSize = newFontSize
+        this.xterminal.options.fontFamily= 'SauceCodePro MonoWindows, courier-new, monospace'
 
         connection.onmessage = (ev: MessageEvent) => {
-          console.log("Got message: ", ev.data);
-
             let message = JSON.parse(ev.data)
             let msgData = base64.decode(message.Data)
 
             if (message.Type === "Write") {
                 let writeMsg = JSON.parse(msgData)
-                this.xterminal.writeUtf8(base64.base64ToArrayBuffer(writeMsg.Data));
+                this.xterminal.write(base64.base64ToArrayBuffer(writeMsg.Data));
             }
 
             if (message.Type == "WinSize") {
@@ -61,7 +60,7 @@ class TTYReceiver {
 
                 const containerPixSize = this.getElementPixelsSize(container);
                 const newFontSize = this.guessNewFontSize(winSizeMsg.Cols, winSizeMsg.Rows, containerPixSize.width, containerPixSize.height);
-                this.xterminal.setOption('fontSize', newFontSize);
+                this.xterminal.options.fontSize = newFontSize
 
                 // Now set the new size.
                 this.xterminal.resize(winSizeMsg.Cols, winSizeMsg.Rows)
@@ -99,7 +98,7 @@ class TTYReceiver {
     private guessNewFontSize(newCols: number, newRows: number, targetWidth: number, targetHeight: number): number {
         const cols = this.xterminal.cols;
         const rows = this.xterminal.rows;
-        const fontSize = this.xterminal.getOption('fontSize');
+        const fontSize = this.xterminal.options.fontSize
         const xtermPixelsSize = this.getElementPixelsSize(this.containerElement.querySelector(".xterm-screen"));
 
         const newHFontSizeMultiplier =  (cols / newCols) * (targetWidth / xtermPixelsSize.width);
