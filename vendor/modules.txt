@@ -1,24 +1,35 @@
-# github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78
+# github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1
+## explicit; go 1.16
 github.com/Azure/go-ansiterm
 github.com/Azure/go-ansiterm/winterm
 # github.com/elisescu/pty v1.0.2
+## explicit
 github.com/elisescu/pty
 # github.com/gorilla/mux v1.8.0
+## explicit; go 1.12
 github.com/gorilla/mux
-# github.com/gorilla/websocket v1.4.2
+# github.com/gorilla/websocket v1.5.0
+## explicit; go 1.12
 github.com/gorilla/websocket
-# github.com/hashicorp/yamux v0.0.0-20200609203250-aecfd211c9ce
+# github.com/hashicorp/yamux v0.1.1
+## explicit; go 1.15
 github.com/hashicorp/yamux
-# github.com/konsorten/go-windows-terminal-sequences v1.0.2
-github.com/konsorten/go-windows-terminal-sequences
-# github.com/moby/term v0.0.0-20200915141129-7f0af18e79f2
+# github.com/moby/term v0.0.0-20221105221325-4eb28fa6025c
+## explicit; go 1.18
 github.com/moby/term
 github.com/moby/term/windows
-# github.com/sirupsen/logrus v1.4.2
+# github.com/sirupsen/logrus v1.9.0
+## explicit; go 1.13
 github.com/sirupsen/logrus
-# golang.org/x/crypto v0.0.0-20191227163750-53104e6ec876
+# golang.org/x/crypto v0.3.0
+## explicit; go 1.17
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/sys v0.0.0-20200831180312-196b9ba8737a
+# golang.org/x/sys v0.2.0
+## explicit; go 1.17
 golang.org/x/sys/internal/unsafeheader
+golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
+# golang.org/x/term v0.2.0
+## explicit; go 1.17
+golang.org/x/term
