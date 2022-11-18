@@ -74,6 +74,7 @@ Flags:
 	readOnly := flag.Bool("readonly", false, "Start a read only session")
 	publicSession := flag.Bool("public", false, "Create a public session")
 	noTLS := flag.Bool("no-tls", false, "Don't use TLS to connect to the tty-proxy server. Useful for local debugging")
+	noWaitEnter := flag.Bool("no-wait", false, "Don't wait for the Enter press before starting the session")
 	detachKeys := flag.String("detach-keys", "ctrl-o,ctrl-c", "Sequence of keys to press for closing the connection. Supported: https://godoc.org/github.com/moby/term#pkg-variables.")
 	verbose := flag.Bool("verbose", false, "Verbose logging")
 	flag.Usage = func() {
@@ -166,10 +167,13 @@ Flags:
 	}
 
 	fmt.Printf("local session: http://%s/s/local/\n", *listenAddress)
-	fmt.Printf("Press Enter to continue!\n")
-	bufio.NewReader(os.Stdin).ReadString('\n')
 
-	stopPtyAndRestore := func () {
+	if !*noWaitEnter {
+		fmt.Printf("Press Enter to continue!\n")
+		bufio.NewReader(os.Stdin).ReadString('\n')
+	}
+
+	stopPtyAndRestore := func() {
 		ptyMaster.Stop()
 		ptyMaster.Restore()
 	}
