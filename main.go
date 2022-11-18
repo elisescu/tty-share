@@ -75,6 +75,9 @@ Flags:
 	publicSession := flag.Bool("public", false, "Create a public session")
 	noTLS := flag.Bool("no-tls", false, "Don't use TLS to connect to the tty-proxy server. Useful for local debugging")
 	noWaitEnter := flag.Bool("no-wait", false, "Don't wait for the Enter press before starting the session")
+	headless := flag.Bool("headless", false, "Don't expect an interactive terminal at stdin")
+	headlessCols := flag.Int("headless-cols", 80, "Number of cols for the allocated pty when running headless")
+	headlessRows := flag.Int("headless-rows", 25, "Number of rows for the allocated pty when running headless")
 	detachKeys := flag.String("detach-keys", "ctrl-o,ctrl-c", "Sequence of keys to press for closing the connection. Supported: https://godoc.org/github.com/moby/term#pkg-variables.")
 	verbose := flag.Bool("verbose", false, "Verbose logging")
 	flag.Usage = func() {
@@ -121,7 +124,7 @@ Flags:
 	}
 
 	// tty-share works as a server, from here on
-	if !isStdinTerminal() {
+	if !isStdinTerminal() && !*headless {
 		fmt.Printf("Input not a tty\n")
 		os.Exit(1)
 	}
@@ -153,7 +156,7 @@ Flags:
 		)
 	}
 
-	ptyMaster := ptyMasterNew()
+	ptyMaster := ptyMasterNew(*headless, *headlessCols, *headlessRows)
 	err := ptyMaster.Start(*commandName, strings.Fields(*commandArgs), envVars)
 	if err != nil {
 		log.Errorf("Cannot start the %s command: %s", *commandName, err.Error())
@@ -168,7 +171,7 @@ Flags:
 
 	fmt.Printf("local session: http://%s/s/local/\n", *listenAddress)
 
-	if !*noWaitEnter {
+	if !*noWaitEnter && !*headless {
 		fmt.Printf("Press Enter to continue!\n")
 		bufio.NewReader(os.Stdin).ReadString('\n')
 	}
@@ -195,8 +198,11 @@ Flags:
 		server.WindowSize(cols, rows)
 	})
 
-	mw := io.MultiWriter(os.Stdout, server)
-
+	var mw io.Writer
+	mw = server
+	if !*headless {
+		mw = io.MultiWriter(os.Stdout, server)
+	}
 
 	go func() {
 		err := server.Run()
@@ -213,12 +219,14 @@ Flags:
 		}
 	}()
 
-	go func() {
-		_, err := io.Copy(ptyMaster, os.Stdin)
-		if err != nil {
-			stopPtyAndRestore()
-		}
-	}()
+	if !*headless {
+		go func() {
+			_, err := io.Copy(ptyMaster, os.Stdin)
+			if err != nil {
+				stopPtyAndRestore()
+			}
+		}()
+	}
 
 	ptyMaster.Wait()
 	fmt.Printf("tty-share finished\n\n\r")
