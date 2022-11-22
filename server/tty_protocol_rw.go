@@ -33,13 +33,13 @@ type OnMsgWrite func(data []byte)
 type OnMsgWinSize func(cols, rows int)
 
 type TTYProtocolWSLocked struct {
-	ws      *websocket.Conn
-	lock    sync.Mutex
+	ws   *websocket.Conn
+	lock sync.Mutex
 }
 
 func NewTTYProtocolWSLocked(ws *websocket.Conn) *TTYProtocolWSLocked {
 	return &TTYProtocolWSLocked{
-		ws:      ws,
+		ws: ws,
 	}
 }
 
@@ -67,7 +67,6 @@ func marshalMsg(aMessage interface{}) (_ []byte, err error) {
 
 	return nil, nil
 }
-
 
 func (handler *TTYProtocolWSLocked) ReadAndHandle(onWrite OnMsgWrite, onWinSize OnMsgWinSize) (err error) {
 	var msg MsgWrapper

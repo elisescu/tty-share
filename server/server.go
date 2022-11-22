@@ -1,15 +1,19 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"github.com/hashicorp/yamux"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -36,13 +40,15 @@ type TTYServerConfig struct {
 	FrontendPath       string
 	PTY                PTYHandler
 	SessionID          string
+	AllowTunneling     bool
 }
 
 // TTYServer represents the instance of a tty server
 type TTYServer struct {
-	httpServer *http.Server
-	config     TTYServerConfig
-	session    *ttyShareSession
+	httpServer       *http.Server
+	config           TTYServerConfig
+	session          *ttyShareSession
+	muxTunnelSession *yamux.Session
 }
 
 func (server *TTYServer) serveContent(w http.ResponseWriter, r *http.Request, name string) {
@@ -90,30 +96,44 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 	installHandlers := func(session string) {
 		// This function installs handlers for paths that contain the "session" passed as a
 		// parameter. The paths are for the static files, websockets, and other.
-		path := fmt.Sprintf("/s/%s/static/", session)
-		routesHandler.PathPrefix(path).Handler(http.StripPrefix(path,
+		staticPath := "/s/" + session + "/static/"
+		ttyWsPath := "/s/" + session + "/ws"
+		tunnelWsPath := "/s/" + session + "/tws"
+		pathPrefix := "/s/" + session
+
+		routesHandler.PathPrefix(staticPath).Handler(http.StripPrefix(staticPath,
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				server.serveContent(w, r, r.URL.Path)
 			})))
 
-		routesHandler.HandleFunc(fmt.Sprintf("/s/%s/", session), func(w http.ResponseWriter, r *http.Request) {
-			wsPath := "/s/" + session + "/ws"
-			pathPrefix := "/s/" + session
+		routesHandler.HandleFunc(pathPrefix+"/", func(w http.ResponseWriter, r *http.Request) {
 			// Check the frontend/templates/tty-share.in.html file to see where the template applies
 			templateModel := struct {
 				PathPrefix string
 				WSPath     string
-			}{pathPrefix, wsPath}
+			}{pathPrefix, ttyWsPath}
 
 			// TODO Extract these in constants
-			w.Header().Add("TTYSHARE-VERSION", "1")
-			w.Header().Add("TTYSHARE-WSPATH", wsPath)
+			w.Header().Add("TTYSHARE-VERSION", "2")
+
+			// Deprecated HEADER (from prev version)
+			// TODO: Find a proper way to stop handling backward versions
+			w.Header().Add("TTYSHARE-WSPATH", ttyWsPath)
+
+			w.Header().Add("TTYSHARE-TTY-WSPATH", ttyWsPath)
+			w.Header().Add("TTYSHARE-TUNNEL-WSPATH", tunnelWsPath)
 
 			server.handleWithTemplateHtml(w, r, "tty-share.in.html", templateModel)
 		})
-		routesHandler.HandleFunc(fmt.Sprintf("/s/%s/ws", session), func(w http.ResponseWriter, r *http.Request) {
-			server.handleWebsocket(w, r)
+		routesHandler.HandleFunc(ttyWsPath, func(w http.ResponseWriter, r *http.Request) {
+			server.handleTTYWebsocket(w, r)
 		})
+		if server.config.AllowTunneling {
+			// tunnel websockets connection
+			routesHandler.HandleFunc(tunnelWsPath, func(w http.ResponseWriter, r *http.Request) {
+				server.handleTunnelWebsocket(w, r)
+			})
+		}
 		routesHandler.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			templateModel := struct{ PathPrefix string }{fmt.Sprintf("/s/%s", session)}
 			server.handleWithTemplateHtml(w, r, "404.in.html", templateModel)
@@ -131,7 +151,7 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 	return server
 }
 
-func (server *TTYServer) handleWebsocket(w http.ResponseWriter, r *http.Request) {
+func (server *TTYServer) handleTTYWebsocket(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusForbidden)
 		return
@@ -151,6 +171,84 @@ func (server *TTYServer) handleWebsocket(w http.ResponseWriter, r *http.Request)
 	// On a new connection, ask for a refresh/redraw of the terminal app
 	server.config.PTY.Refresh()
 	server.session.HandleWSConnection(conn)
+}
+
+func (server *TTYServer) handleTunnelWebsocket(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	upgrader := websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+	}
+	wsConn, err := upgrader.Upgrade(w, r, nil)
+
+	if err != nil {
+		log.Error("Cannot upgrade to WS for tunnel route connection: ", err.Error())
+		return
+	}
+	defer wsConn.Close()
+
+	// Read the first message on this ws route, and expect it to be a json containing the address
+	// to tunnel to. After that first message, will follow the raw connection data
+	_, wsReader, err := wsConn.NextReader()
+	if err != nil {
+		log.Error("Cannot read from the tunnel WS connection ", err.Error())
+		return
+	}
+
+	var tunInitMsg TunInitMsg
+	err = json.NewDecoder(wsReader).Decode(&tunInitMsg)
+
+	if err != nil {
+		log.Error("Cannot decode the tunnel init message ", err.Error())
+		return
+	}
+
+	wsRW := &WSConnReadWriteCloser{
+		WsConn: wsConn,
+	}
+
+	server.muxTunnelSession, err = yamux.Server(wsRW, nil)
+
+	if err != nil {
+		log.Errorf("Could not open a mux server: ", err.Error())
+		return
+	}
+
+	for {
+		muxStream, err := server.muxTunnelSession.Accept()
+
+		if err != nil {
+			if err != io.EOF {
+				log.Warnf("Mux cannot accept new connections: %s", err.Error())
+			}
+			return
+		}
+
+		localConn, err := net.Dial("tcp", tunInitMsg.Address)
+		if err != nil {
+			log.Error("Cannot create local connection ", err.Error())
+			return
+		}
+
+		go func() {
+			io.Copy(muxStream, localConn)
+			// Not sure yet which of the two io.Copy finishes first, so just close everything in both cases
+			defer localConn.Close()
+			defer muxStream.Close()
+		}()
+
+		go func() {
+			io.Copy(localConn, muxStream)
+			// Not sure yet which of the two io.Copy finishes first, so just close everything in both cases
+			defer muxStream.Close()
+			defer localConn.Close()
+		}()
+	}
+
 }
 
 func panicIfErr(err error) {
@@ -193,5 +291,8 @@ func (server *TTYServer) WindowSize(cols, rows int) (err error) {
 
 func (server *TTYServer) Stop() error {
 	log.Debug("Stopping the server")
+	if server.muxTunnelSession != nil {
+		server.muxTunnelSession.Close()
+	}
 	return server.httpServer.Close()
 }

@@ -53,6 +53,16 @@ You can join a session by opening the session URLs in the browser, or with anoth
 ~ $ tty-share https://on.tty-share.com/s/L8d2ECvHLhU8CXEBaEF5WKV8O3jsZkS5sXwG1__--2_jnFSlGonzXBe0qxd7tZeRvQM/
 ```
 
+**Join a session with TCP port forwarding**
+
+You can use the `-L` option to create a TCP tunnel, similarly to how you would do it with `ssh`:
+```
+tty-share -L 1234:example.com:4567 https://on.tty-share.com/s/L8d2ECvHLhU8CXEBaEF5WKV8O3jsZkS5sXwG1__--2_jnFSlGonzXBe0qxd7tZeRvQM/
+```
+This will make `tty-share` listen locally on port `1234` and forward all connections to `example.com:4567` from the remote side.
+The server needs to allow this, by using the `-A` flag.
+
+
 ## Building
 
 Simply run
