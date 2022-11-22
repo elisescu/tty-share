@@ -16,12 +16,13 @@ import (
 
 var version string = "0.0.0"
 
-func createServer(frontListenAddress string, frontendPath string, pty server.PTYHandler, sessionID string) *server.TTYServer {
+func createServer(frontListenAddress string, frontendPath string, pty server.PTYHandler, sessionID string, allowTunneling bool) *server.TTYServer {
 	config := ttyServer.TTYServerConfig{
 		FrontListenAddress: frontListenAddress,
 		FrontendPath:       frontendPath,
 		PTY:                pty,
 		SessionID:          sessionID,
+		AllowTunneling:     allowTunneling,
 	}
 
 	server := ttyServer.NewTTYServer(config)
@@ -47,7 +48,7 @@ Usage:
                 [--logfile <file name>] [--listen <[ip]:port>]
                 [--frontend-path <path>] [--tty-proxy <host:port>]
                 [--readonly] [--public] [no-tls] [--verbose] [--version]
-      tty-share [--verbose] [--logfile <file name>]
+      tty-share [--verbose] [--logfile <file name>] [-L <local_port>:<remote_host>:<remote_port>]
                 [--detach-keys]                     <session URL>                 # connect to an existing session, as a client
 
 Examples:
@@ -60,25 +61,30 @@ Examples:
       tty-share http://localhost:8000/s/local/
 
 Flags:
+[c] - flags that are used only by the client
+[s] - flags that are used only by the server
 `
-	commandName := flag.String("command", os.Getenv("SHELL"), "The command to run")
+	commandName := flag.String("command", os.Getenv("SHELL"), "[s] The command to run")
 	if *commandName == "" {
 		*commandName = "bash"
 	}
-	commandArgs := flag.String("args", "", "The command arguments")
+	commandArgs := flag.String("args", "", "[s] The command arguments")
 	logFileName := flag.String("logfile", "-", "The name of the file to log")
-	listenAddress := flag.String("listen", "localhost:8000", "tty-server address")
+	listenAddress := flag.String("listen", "localhost:8000", "[s] tty-server address")
 	versionFlag := flag.Bool("version", false, "Print the tty-share version")
-	frontendPath := flag.String("frontend-path", "", "The path to the frontend resources. By default, these resources are included in the server binary, so you only need this path if you don't want to use the bundled ones.")
-	proxyServerAddress := flag.String("tty-proxy", "on.tty-share.com:4567", "Address of the proxy for public facing connections")
-	readOnly := flag.Bool("readonly", false, "Start a read only session")
-	publicSession := flag.Bool("public", false, "Create a public session")
-	noTLS := flag.Bool("no-tls", false, "Don't use TLS to connect to the tty-proxy server. Useful for local debugging")
-	noWaitEnter := flag.Bool("no-wait", false, "Don't wait for the Enter press before starting the session")
-	headless := flag.Bool("headless", false, "Don't expect an interactive terminal at stdin")
-	headlessCols := flag.Int("headless-cols", 80, "Number of cols for the allocated pty when running headless")
-	headlessRows := flag.Int("headless-rows", 25, "Number of rows for the allocated pty when running headless")
-	detachKeys := flag.String("detach-keys", "ctrl-o,ctrl-c", "Sequence of keys to press for closing the connection. Supported: https://godoc.org/github.com/moby/term#pkg-variables.")
+	frontendPath := flag.String("frontend-path", "", "[s] The path to the frontend resources. By default, these resources are included in the server binary, so you only need this path if you don't want to use the bundled ones.")
+	proxyServerAddress := flag.String("tty-proxy", "on.tty-share.com:4567", "[s] Address of the proxy for public facing connections")
+	readOnly := flag.Bool("readonly", false, "[s] Start a read only session")
+	publicSession := flag.Bool("public", false, "[s] Create a public session")
+	noTLS := flag.Bool("no-tls", false, "[s] Don't use TLS to connect to the tty-proxy server. Useful for local debugging")
+	noWaitEnter := flag.Bool("no-wait", false, "[s] Don't wait for the Enter press before starting the session")
+	headless := flag.Bool("headless", false, "[s] Don't expect an interactive terminal at stdin")
+	headlessCols := flag.Int("headless-cols", 80, "[s] Number of cols for the allocated pty when running headless")
+	headlessRows := flag.Int("headless-rows", 25, "[s] Number of rows for the allocated pty when running headless")
+	detachKeys := flag.String("detach-keys", "ctrl-o,ctrl-c", "[c] Sequence of keys to press for closing the connection. Supported: https://godoc.org/github.com/moby/term#pkg-variables.")
+	allowTunneling := flag.Bool("A", false, "[s] Allow clients to create a TCP tunnel")
+	tunnelConfig := flag.String("L", "", "[c] TCP tunneling addresses: local_port:remote_host:remote_port. The client will listen on local_port for TCP connections, and will forward those to the from the server side to remote_host:remote_port")
+
 	verbose := flag.Bool("verbose", false, "Verbose logging")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "%s", usageString)
@@ -113,7 +119,8 @@ Flags:
 	args := flag.Args()
 	if len(args) == 1 {
 		connectURL := args[0]
-		client := newTtyShareClient(connectURL, *detachKeys)
+
+		client := newTtyShareClient(connectURL, *detachKeys, tunnelConfig)
 
 		err := client.Run()
 		if err != nil {
@@ -188,7 +195,7 @@ Flags:
 		pty = &nilPTY{}
 	}
 
-	server := createServer(*listenAddress, *frontendPath, pty, sessionID)
+	server := createServer(*listenAddress, *frontendPath, pty, sessionID, *allowTunneling)
 	if cols, rows, e := ptyMaster.GetWinSize(); e == nil {
 		server.WindowSize(cols, rows)
 	}

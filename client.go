@@ -1,44 +1,53 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 
 	"github.com/elisescu/tty-share/server"
 	"github.com/gorilla/websocket"
+	"github.com/hashicorp/yamux"
 	"github.com/moby/term"
 	log "github.com/sirupsen/logrus"
 )
 
 type ttyShareClient struct {
-	url          string
-	wsConn       *websocket.Conn
-	detachKeys   string
-	wcChan       chan os.Signal
-	ioFlagAtomic uint32 // used with atomic
-	winSizes     struct {
+	url             string
+	ttyWsConn       *websocket.Conn
+	tunnelWsConn    *websocket.Conn
+	tunnelAddresses *string
+	detachKeys      string
+	wcChan          chan os.Signal
+	ioFlagAtomic    uint32 // used with atomic
+	winSizes        struct {
 		thisW   uint16
 		thisH   uint16
 		remoteW uint16
 		remoteH uint16
 	}
-	winSizesMutex sync.Mutex
+	winSizesMutex    sync.Mutex
+	tunnelMuxSession *yamux.Session
 }
 
-func newTtyShareClient(url string, detachKeys string) *ttyShareClient {
+func newTtyShareClient(url string, detachKeys string, tunnelConfig *string) *ttyShareClient {
 	return &ttyShareClient{
-		url:          url,
-		wsConn:       nil,
-		detachKeys:   detachKeys,
-		wcChan:       make(chan os.Signal, 1),
-		ioFlagAtomic: 1,
+		url:             url,
+		ttyWsConn:       nil,
+		detachKeys:      detachKeys,
+		wcChan:          make(chan os.Signal, 1),
+		ioFlagAtomic:    1,
+		tunnelAddresses: tunnelConfig,
 	}
 }
 
@@ -103,7 +112,10 @@ func (c *ttyShareClient) Run() (err error) {
 	}
 
 	// Get the path of the websockts route from the header
-	wsPath := resp.Header.Get("TTYSHARE-WSPATH")
+	ttyWsPath := resp.Header.Get("TTYSHARE-TTY-WSPATH")
+	ttyWSProtocol := resp.Header.Get("TTYSHARE-VERSION")
+
+	ttyTunnelPath := resp.Header.Get("TTYSHARE-TUNNEL-WSPATH")
 
 	// Build the WS URL from the host part of the given http URL and the wsPath
 	httpURL, err := url.Parse(c.url)
@@ -114,13 +126,97 @@ func (c *ttyShareClient) Run() (err error) {
 	if httpURL.Scheme == "https" {
 		wsScheme = "wss"
 	}
-	wsURL := wsScheme + "://" + httpURL.Host + wsPath
+	ttyWsURL := wsScheme + "://" + httpURL.Host + ttyWsPath
+	ttyTunnelURL := wsScheme + "://" + httpURL.Host + ttyTunnelPath
 
-	log.Debugf("Built the WS URL from the headers: %s", wsURL)
+	log.Debugf("Built the WS URL from the headers: %s", ttyWsURL)
 
-	c.wsConn, _, err = websocket.DefaultDialer.Dial(wsURL, nil)
+	c.ttyWsConn, _, err = websocket.DefaultDialer.Dial(ttyWsURL, nil)
 	if err != nil {
 		return
+	}
+	defer c.ttyWsConn.Close()
+
+	tunnelFunc := func() {
+		if *c.tunnelAddresses == "" {
+			// Don't build a tunnel
+			return
+		}
+
+		if ver, err := strconv.Atoi(ttyWSProtocol); err != nil || ver < 2 {
+			log.Fatalf("Cannot create a tunnel. Server too old (protocol %d, required min. 2)", ver)
+		}
+
+		c.tunnelWsConn, _, err = websocket.DefaultDialer.Dial(ttyTunnelURL, nil)
+		if err != nil {
+			log.Errorf("Cannot create a tunnel connection with the server. Server needs to allow that")
+			return
+		}
+		defer c.tunnelWsConn.Close()
+
+		a := strings.Split(*c.tunnelAddresses, ":")
+		tunnelRemoteAddress := fmt.Sprintf("%s:%s", a[1], a[2])
+		tunnelLocalAddress := fmt.Sprintf(":%s", a[0])
+
+		initMsg := server.TunInitMsg{
+			Address: tunnelRemoteAddress,
+		}
+
+		data, err := json.Marshal(initMsg)
+		if err != nil {
+			log.Errorf("Could not marshal the tunnel init message: %s", err.Error())
+			return
+		}
+
+		err = c.tunnelWsConn.WriteMessage(websocket.TextMessage, data)
+
+		if err != nil {
+			log.Errorf("Could not initiate the tunnel: %s", err.Error())
+			return
+		}
+
+		wsWRC := server.WSConnReadWriteCloser{
+			WsConn: c.tunnelWsConn,
+		}
+
+		localListener, err := net.Listen("tcp", tunnelLocalAddress)
+		if err != nil {
+			log.Errorf("Could not listen locally for the tunnel: %s", err.Error())
+
+		}
+
+		c.tunnelMuxSession, err = yamux.Server(&wsWRC, nil)
+		if err != nil {
+			log.Errorf("Could not create mux server: %s", err.Error())
+		}
+
+		for {
+			localTunconn, err := localListener.Accept()
+
+			if err != nil {
+				log.Warnf("Cannot accept local tunnel connections: ", err.Error())
+				return
+			}
+
+			muxClient, err := c.tunnelMuxSession.Open()
+			if err != nil {
+				log.Warnf("Cannot create a muxer to the remote, over ws: ", err.Error())
+				return
+			}
+
+			go func() {
+				io.Copy(muxClient, localTunconn)
+				defer localTunconn.Close()
+				defer muxClient.Close()
+			}()
+
+			go func() {
+				io.Copy(localTunconn, muxClient)
+				defer localTunconn.Close()
+				defer muxClient.Close()
+			}()
+
+		}
 	}
 
 	detachBytes, err := term.ToBytes(c.detachKeys)
@@ -133,7 +229,7 @@ func (c *ttyShareClient) Run() (err error) {
 	defer term.RestoreTerminal(os.Stdin.Fd(), state)
 	clearScreen()
 
-	protoWS := server.NewTTYProtocolWSLocked(c.wsConn)
+	protoWS := server.NewTTYProtocolWSLocked(c.ttyWsConn)
 
 	monitorWinChanges := func() {
 		// start monitoring the size of the terminal
@@ -197,6 +293,7 @@ func (c *ttyShareClient) Run() (err error) {
 
 	go monitorWinChanges()
 	go writeLoop()
+	go tunnelFunc()
 	readLoop()
 
 	clearScreen()
@@ -204,6 +301,11 @@ func (c *ttyShareClient) Run() (err error) {
 }
 
 func (c *ttyShareClient) Stop() {
-	c.wsConn.Close()
+	// if we had a tunnel, close it
+	if c.tunnelMuxSession != nil {
+		c.tunnelMuxSession.Close()
+		c.tunnelWsConn.Close()
+	}
+	c.ttyWsConn.Close()
 	signal.Stop(c.wcChan)
 }
