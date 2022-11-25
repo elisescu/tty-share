@@ -2,9 +2,9 @@
 ## explicit; go 1.16
 github.com/Azure/go-ansiterm
 github.com/Azure/go-ansiterm/winterm
-# github.com/elisescu/pty v1.0.2
-## explicit
-github.com/elisescu/pty
+# github.com/creack/pty v1.1.11
+## explicit; go 1.13
+github.com/creack/pty
 # github.com/gorilla/mux v1.8.0
 ## explicit; go 1.12
 github.com/gorilla/mux
