@@ -72,6 +72,8 @@ type Upgrader struct {
 	// guarantee that compression will be supported. Currently only "no context
 	// takeover" modes are supported.
 	EnableCompression bool
+
+	CrossOrigin bool
 }
 
 func (u *Upgrader) returnError(w http.ResponseWriter, r *http.Request, status int, reason string) (*Conn, error) {
@@ -149,7 +151,7 @@ func (u *Upgrader) Upgrade(w http.ResponseWriter, r *http.Request, responseHeade
 	if checkOrigin == nil {
 		checkOrigin = checkSameOrigin
 	}
-	if !checkOrigin(r) {
+	if !checkOrigin(r) && !u.CrossOrigin {
 		return u.returnError(w, r, http.StatusForbidden, "websocket: request origin not allowed by Upgrader.CheckOrigin")
 	}
 
