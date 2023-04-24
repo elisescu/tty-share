@@ -157,12 +157,20 @@ func (server *TTYServer) handleTTYWebsocket(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-		CrossOrigin:     crossOrigin,
 	}
+	if crossOrigin {
+		upgrader = websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				return true
+			},
+		}
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 
 	if err != nil {
