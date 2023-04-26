@@ -41,6 +41,7 @@ type TTYServerConfig struct {
 	PTY                PTYHandler
 	SessionID          string
 	AllowTunneling     bool
+	CrossOrigin        bool
 }
 
 // TTYServer represents the instance of a tty server
@@ -126,7 +127,7 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 			server.handleWithTemplateHtml(w, r, "tty-share.in.html", templateModel)
 		})
 		routesHandler.HandleFunc(ttyWsPath, func(w http.ResponseWriter, r *http.Request) {
-			server.handleTTYWebsocket(w, r)
+			server.handleTTYWebsocket(w, r, config.CrossOrigin)
 		})
 		if server.config.AllowTunneling {
 			// tunnel websockets connection
@@ -151,16 +152,25 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 	return server
 }
 
-func (server *TTYServer) handleTTYWebsocket(w http.ResponseWriter, r *http.Request) {
+func (server *TTYServer) handleTTYWebsocket(w http.ResponseWriter, r *http.Request, crossOrigin bool) {
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
+	if crossOrigin {
+		upgrader = websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				return true
+			},
+		}
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 
 	if err != nil {
