@@ -1,5 +1,3 @@
-[![Build Status](https://travis-ci.com/elisescu/tty-share.svg?branch=master)](https://travis-ci.com/elisescu/tty-share)
-
 # tty-share
 
 [tty-share](https://tty-share.com) is a very simple tool used to share your Linux/OSX terminal over the Internet. It is written in GO, results in a static cross-platform binary with no dependencies, and therefore will also work on your Raspberry Pi.
