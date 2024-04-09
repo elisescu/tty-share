@@ -30,7 +30,9 @@ If you are on OSX and use [brew](https://brew.sh/), then you can simply do a `br
 
 **Binary releases**
 
-Otherwise, download the latest `tty-share` binary [release](https://github.com/elisescu/tty-share/releases), and run it:
+Otherwise, download the latest `tty-share` binary [release](https://github.com/elisescu/tty-share/releases).
+
+See package name for your system package manager at [Repology](https://repology.org/project/tty-share/information).
 
 **Running it**
 ```
