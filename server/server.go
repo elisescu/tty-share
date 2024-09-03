@@ -42,6 +42,7 @@ type TTYServerConfig struct {
 	SessionID          string
 	AllowTunneling     bool
 	CrossOrigin        bool
+	BaseUrlPath        string
 }
 
 // TTYServer represents the instance of a tty server
@@ -97,10 +98,11 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 	installHandlers := func(session string) {
 		// This function installs handlers for paths that contain the "session" passed as a
 		// parameter. The paths are for the static files, websockets, and other.
-		staticPath := "/s/" + session + "/static/"
-		ttyWsPath := "/s/" + session + "/ws"
-		tunnelWsPath := "/s/" + session + "/tws"
-		pathPrefix := "/s/" + session
+		baseUrlPath := config.BaseUrlPath
+		staticPath := baseUrlPath + "/s/" + session + "/static/"
+		ttyWsPath := baseUrlPath + "/s/" + session + "/ws/"
+		tunnelWsPath := baseUrlPath + "/s/" + session + "/tws"
+		pathPrefix := baseUrlPath + "/s/" + session
 
 		routesHandler.PathPrefix(staticPath).Handler(http.StripPrefix(staticPath,
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

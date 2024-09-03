@@ -16,7 +16,7 @@ import (
 
 var version string = "0.0.0"
 
-func createServer(frontListenAddress string, frontendPath string, pty server.PTYHandler, sessionID string, allowTunneling bool, crossOrigin bool) *server.TTYServer {
+func createServer(frontListenAddress string, frontendPath string, pty server.PTYHandler, sessionID string, allowTunneling bool, crossOrigin bool, baseUrlPath string) *server.TTYServer {
 	config := ttyServer.TTYServerConfig{
 		FrontListenAddress: frontListenAddress,
 		FrontendPath:       frontendPath,
@@ -24,6 +24,7 @@ func createServer(frontListenAddress string, frontendPath string, pty server.PTY
 		SessionID:          sessionID,
 		AllowTunneling:     allowTunneling,
 		CrossOrigin:        crossOrigin,
+		BaseUrlPath:        baseUrlPath,
 	}
 
 	server := ttyServer.NewTTYServer(config)
@@ -86,6 +87,7 @@ Flags:
 	allowTunneling := flag.Bool("A", false, "[s] Allow clients to create a TCP tunnel")
 	tunnelConfig := flag.String("L", "", "[c] TCP tunneling addresses: local_port:remote_host:remote_port. The client will listen on local_port for TCP connections, and will forward those to the from the server side to remote_host:remote_port")
 	crossOrgin := flag.Bool("cross-origin", false, "[s] Allow cross origin requests to the server")
+	baseUrlPath := flag.String("base-url-path", "", "[s] The base URL path on the serve")
 
 	verbose := flag.Bool("verbose", false, "Verbose logging")
 	flag.Usage = func() {
@@ -178,7 +180,15 @@ Flags:
 		fmt.Printf("public session: %s\n", publicURL)
 	}
 
-	fmt.Printf("local session: http://%s/s/local/\n", *listenAddress)
+	// Ensure the base URL path does not end with a forward slash,
+	// and that there are no excessive forward slashes at the beginning.
+	// A base URL of "/" will be trimmed to an empty string.
+	sanitizedBaseUrlPath := strings.Trim(*baseUrlPath, "/")
+	if sanitizedBaseUrlPath != "" {
+		sanitizedBaseUrlPath = "/" + sanitizedBaseUrlPath
+	}
+
+	fmt.Printf("local session: http://%s%s/s/local/\n", *listenAddress, sanitizedBaseUrlPath)
 
 	if !*noWaitEnter && !*headless {
 		fmt.Printf("Press Enter to continue!\n")
@@ -197,7 +207,7 @@ Flags:
 		pty = &nilPTY{}
 	}
 
-	server := createServer(*listenAddress, *frontendPath, pty, sessionID, *allowTunneling, *crossOrgin)
+	server := createServer(*listenAddress, *frontendPath, pty, sessionID, *allowTunneling, *crossOrgin, sanitizedBaseUrlPath)
 	if cols, rows, e := ptyMaster.GetWinSize(); e == nil {
 		server.WindowSize(cols, rows)
 	}
