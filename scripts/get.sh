@@ -26,3 +26,8 @@ echo "Downloading ${DOWNLOAD_URL} ..."
 # Download the appropriate binary
 curl -sL ${DOWNLOAD_URL}  -o tty-share
 chmod +x tty-share
+
+echo 'Examples:
+    headless mode: ./tty-share -A --public --headless --headless-cols 150 --headless-rows 50 --no-wait --listen :8001
+    normal mode: ./tty-share -A --public  --no-wait --listen :8001
+'
