@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         # build targets
@@ -20,47 +20,47 @@ jobs:
             goarch: '386'
           - goos: darwin
             goarch: amd64
+          - goos: darwin
+            goarch: arm64
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v4
         with:
-          lfs: true
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.18
+          go-version: 1.23
 
-      - name: Build for Linux-amd64
+      - name: Check if the version string was updated
+        run: |
+          VERSION=$(echo ${GITHUB_REF} | awk -F/ '{print substr($3,2,10);}')
+
+          if ! grep "var version string = \"$VERSION\"" main.go; then
+            echo "The version string inside main.go should be updated to $VERSION"
+            exit 1
+          fi
+
+      - name: Build for ${{ matrix.goos }}-${{ matrix.goarch }}
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-
         run: |
-          v=$(echo ${GITHUB_REF} | awk -F/ '{print substr($3,2,10);}')
-          go build -x -v -mod=vendor -ldflags "-X main.version=${v} -w -s" -o "tty-share_${GOOS}-${GOARCH}"
+          go build -x -v -mod=vendor -o "tty-share_${GOOS}-${GOARCH}"
 
-      - name: Upload to artifact storage
-        uses: actions/upload-artifact@v2
+      - name: Release
+        uses: elisescu/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          path: tty-share_${{ matrix.goos }}-${{ matrix.goarch }}
-          if-no-files-found: error
-          # only meant for sharing with the publish job
-          retention-days: 1
+          files: tty-share_*
 
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v2
-        with:
-          path: tty-share_*
+      # - name: Debug with tty-share
+      #   if: ${{ matrix.goarch == 'arm64' }}
+      #   run: |
+      #     curl https://raw.githubusercontent.com/elisescu/tty-share/refs/heads/master/scripts/get.sh | sh
+      #     chmod u+x ./tty-share
+      #     export TERM=xterm-256color
+      #     ./tty-share -A --public --headless --headless-cols 255 --headless-rows 50 --no-wait --listen :8001
 
-      - uses: "marvinpinto/action-automatic-releases@latest"
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          prerelease: false
-          files: |
-            tty-share_*
-        id: "automatic_releases"
+

@@ -14,7 +14,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var version string = "0.0.0"
+// This should be updated manually. Most of distro packagers prefer to build golang without
+// complex linker flags that could set the version from the outside
+var version string = "2.4.1"
 
 func createServer(frontListenAddress string, frontendPath string, pty server.PTYHandler, sessionID string, allowTunneling bool, crossOrigin bool, baseUrlPath string) *server.TTYServer {
 	config := ttyServer.TTYServerConfig{
