@@ -1,9 +1,0 @@
-language: go
-
-go:
-  - 1.14.x
-
-before_install:
-  - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-
-script: go build -mod=vendor -ldflags "-X main.version=0.0.1" && test $(./tty-share --version) = 0.0.1
