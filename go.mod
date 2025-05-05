@@ -3,7 +3,7 @@ module github.com/elisescu/tty-share
 go 1.18
 
 require (
-	github.com/creack/pty v1.1.11
+	github.com/creack/pty v1.1.21
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/yamux v0.1.1
