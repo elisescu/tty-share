@@ -41,12 +41,14 @@ jobs:
         run: |
           # Build frontend assets first
           make -C server frontend
-          v=$(echo ${GITHUB_REF} | awk -F/ '{print substr($3,2,10);}')
+          # For PR builds, use a default version since GITHUB_REF won't have a proper version
+          v="dev-$(date +%Y%m%d)-$(git rev-parse --short HEAD)"
           go build -x -v -mod=vendor -ldflags "-X main.version=${v} -w -s" -o "tty-share_${GOOS}-${GOARCH}"
 
       - name: Upload to artifact storage
         uses: actions/upload-artifact@v4
         with:
+          name: tty-share-${{ matrix.goos }}-${{ matrix.goarch }}
           path: tty-share_${{ matrix.goos }}-${{ matrix.goarch }}
           if-no-files-found: error
           # only meant for sharing with the publish job
@@ -58,4 +60,4 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: tty-share_*
+          pattern: tty-share-*
