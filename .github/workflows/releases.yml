@@ -47,6 +47,8 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
+          # Build frontend assets first
+          make -C server frontend
           go build -x -v -mod=vendor -o "tty-share_${GOOS}-${GOARCH}"
 
       - name: Release

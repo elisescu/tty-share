@@ -160,7 +160,7 @@ Flags:
 	envVars := os.Environ()
 	envVars = append(envVars,
 		fmt.Sprintf("TTY_SHARE_LOCAL_URL=http://%s", *listenAddress),
-		fmt.Sprintf("TTY_SHARE=1", os.Getpid()),
+		fmt.Sprintf("TTY_SHARE=%d", os.Getpid()),
 	)
 
 	if publicURL != "" {

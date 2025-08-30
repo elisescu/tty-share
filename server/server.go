@@ -226,7 +226,7 @@ func (server *TTYServer) handleTunnelWebsocket(w http.ResponseWriter, r *http.Re
 	server.muxTunnelSession, err = yamux.Server(wsRW, nil)
 
 	if err != nil {
-		log.Errorf("Could not open a mux server: ", err.Error())
+		log.Errorf("Could not open a mux server: %s", err.Error())
 		return
 	}
 

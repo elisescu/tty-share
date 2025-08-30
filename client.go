@@ -194,13 +194,13 @@ func (c *ttyShareClient) Run() (err error) {
 			localTunconn, err := localListener.Accept()
 
 			if err != nil {
-				log.Warnf("Cannot accept local tunnel connections: ", err.Error())
+				log.Warnf("Cannot accept local tunnel connections: %s", err.Error())
 				return
 			}
 
 			muxClient, err := c.tunnelMuxSession.Open()
 			if err != nil {
-				log.Warnf("Cannot create a muxer to the remote, over ws: ", err.Error())
+				log.Warnf("Cannot create a muxer to the remote, over ws: %s", err.Error())
 				return
 			}
 
