@@ -21,17 +21,17 @@ jobs:
             goarch: amd64
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v5
         with:
           lfs: true
           fetch-depth: 0
       - name: Set up Golang
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.18
-      - uses: actions/setup-node@v3
+          go-version: 1.25
+      - uses: actions/setup-node@v4
         with:
-          node-version: 16.13.0
+          node-version: 22
 
       - name: Build stage
         env:
@@ -39,13 +39,13 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
 
         run: |
-          # TODO: figure out how to get go-bindata here
-          # make -C server
+          # Build frontend assets first
+          make -C server frontend
           v=$(echo ${GITHUB_REF} | awk -F/ '{print substr($3,2,10);}')
           go build -x -v -mod=vendor -ldflags "-X main.version=${v} -w -s" -o "tty-share_${GOOS}-${GOARCH}"
 
       - name: Upload to artifact storage
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           path: tty-share_${{ matrix.goos }}-${{ matrix.goarch }}
           if-no-files-found: error
@@ -56,6 +56,6 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v4
         with:
           path: tty-share_*
