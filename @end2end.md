@@ -149,19 +149,17 @@ This document outlines a comprehensive plan to add end-to-end encryption to tty-
 
 ### Phase 7: Documentation and Deployment
 
-#### 20. Update Documentation
+#### 20. Documentation and Migration Strategy
 - Document new command line flags
 - Create encryption usage examples
 - Update architecture documentation
 - Add security considerations section
-
-#### 21. Migration Strategy
 - Ensure backward compatibility with existing sessions
 - Provide upgrade path for existing deployments
 - Document breaking changes (if any)
 - Create migration tools if needed
 
-#### 22. Release Preparation
+#### 21. Release Preparation
 - Update version numbers and changelog
 - Create release binaries with new features
 - Test cross-platform compilation
