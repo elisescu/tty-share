@@ -1,6 +1,6 @@
 .PHONY: all frontend clean cleanfront rebuild
 
-all: assets_bundle.go
+all: frontend
 	@echo "Done"
 
 rebuild: clean all
