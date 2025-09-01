@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"syscall"
 
+	"github.com/elisescu/tty-share/crypto"
 	"github.com/elisescu/tty-share/server"
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
@@ -38,6 +39,7 @@ type ttyShareClient struct {
 	}
 	winSizesMutex    sync.Mutex
 	tunnelMuxSession *yamux.Session
+	encryptionKey    []byte // nil if no encryption
 }
 
 func newTtyShareClient(url string, detachKeys string, tunnelConfig *string) *ttyShareClient {
@@ -105,6 +107,31 @@ func (c *ttyShareClient) updateThisWinSize() {
 func (c *ttyShareClient) Run() (err error) {
 	log.Debugf("Connecting as a client to %s ..", c.url)
 
+	// Extract encryption key from URL hash fragment
+	httpURL, err := url.Parse(c.url)
+	if err != nil {
+		return
+	}
+	
+	if httpURL.Fragment != "" {
+		// Check if the fragment contains an encryption key
+		if strings.HasPrefix(httpURL.Fragment, "key=") {
+			keyStr := strings.TrimPrefix(httpURL.Fragment, "key=")
+			c.encryptionKey, err = crypto.KeyFromBase64(keyStr)
+			if err != nil {
+				log.Errorf("Invalid encryption key in URL: %s", err.Error())
+				// Continue without encryption key (will show encrypted data)
+				c.encryptionKey = nil
+			} else {
+				log.Debugf("Extracted encryption key from URL")
+			}
+		}
+		
+		// Remove fragment for HTTP request (fragments aren't sent to server)
+		httpURL.Fragment = ""
+		c.url = httpURL.String()
+	}
+
 	resp, err := http.Get(c.url)
 
 	if err != nil {
@@ -118,7 +145,7 @@ func (c *ttyShareClient) Run() (err error) {
 	ttyTunnelPath := resp.Header.Get("TTYSHARE-TUNNEL-WSPATH")
 
 	// Build the WS URL from the host part of the given http URL and the wsPath
-	httpURL, err := url.Parse(c.url)
+	httpURL, err = url.Parse(c.url)
 	if err != nil {
 		return
 	}
@@ -229,7 +256,7 @@ func (c *ttyShareClient) Run() (err error) {
 	defer term.RestoreTerminal(os.Stdin.Fd(), state)
 	clearScreen()
 
-	protoWS := server.NewTTYProtocolWSLocked(c.ttyWsConn)
+	protoWS := server.NewTTYProtocolWSLocked(c.ttyWsConn, c.encryptionKey)
 
 	monitorWinChanges := func() {
 		// start monitoring the size of the terminal

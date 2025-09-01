@@ -43,6 +43,7 @@ type TTYServerConfig struct {
 	AllowTunneling     bool
 	CrossOrigin        bool
 	BaseUrlPath        string
+	EncryptionKey      []byte // Key for end-to-end encryption (nil if disabled)
 }
 
 // TTYServer represents the instance of a tty server
@@ -149,7 +150,7 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 	installHandlers(config.SessionID)
 
 	server.httpServer.Handler = routesHandler
-	server.session = newTTYShareSession(config.PTY)
+	server.session = newTTYShareSession(config.PTY, config.EncryptionKey)
 
 	return server
 }
