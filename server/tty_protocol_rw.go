@@ -54,7 +54,7 @@ func NewTTYProtocolWSLocked(ws *websocket.Conn, encryptionKey []byte) *TTYProtoc
 	}
 }
 
-func (handler *TTYProtocolWSLocked) marshalMsg(aMessage interface{}) (_ []byte, err error) {
+func (handler *TTYProtocolWSLocked) MarshalMsg(aMessage interface{}) (_ []byte, err error) {
 	var msg MsgWrapper
 
 	// If encryption is enabled, wrap the message in an encrypted envelope
@@ -148,25 +148,19 @@ func (handler *TTYProtocolWSLocked) ReadAndHandle(onWrite OnMsgWrite, onWinSize 
 				return err
 			}
 
-			// Parse the decrypted message and handle it
-			var decryptedWrapper MsgWrapper
-			err = json.Unmarshal(plainData, &decryptedWrapper)
-			if err != nil {
-				return err
-			}
-
-			// Handle the decrypted message
-			switch decryptedWrapper.Type {
-			case MsgIDWrite:
-				var msgWrite MsgTTYWrite
-				err = json.Unmarshal(decryptedWrapper.Data, &msgWrite)
-				if err == nil {
-					onWrite(msgWrite.Data)
-				}
-			case MsgIDWinSize:
+			// The decrypted data is the original message JSON, so we need to determine its type
+			// by attempting to unmarshal into both possible message types
+			
+			// Try to unmarshal as MsgTTYWrite first
+			var msgWrite MsgTTYWrite
+			err = json.Unmarshal(plainData, &msgWrite)
+			if err == nil && msgWrite.Size > 0 {
+				onWrite(msgWrite.Data)
+			} else {
+				// Try to unmarshal as MsgTTYWinSize
 				var msgRemoteWinSize MsgTTYWinSize
-				err = json.Unmarshal(decryptedWrapper.Data, &msgRemoteWinSize)
-				if err == nil {
+				err = json.Unmarshal(plainData, &msgRemoteWinSize)
+				if err == nil && (msgRemoteWinSize.Cols > 0 || msgRemoteWinSize.Rows > 0) {
 					onWinSize(msgRemoteWinSize.Cols, msgRemoteWinSize.Rows)
 				}
 			}
@@ -203,7 +197,7 @@ func (handler *TTYProtocolWSLocked) SetWinSize(cols, rows int) (err error) {
 		Cols: cols,
 		Rows: rows,
 	}
-	data, err := handler.marshalMsg(msgWinChanged)
+	data, err := handler.MarshalMsg(msgWinChanged)
 	if err != nil {
 		return
 	}
@@ -220,7 +214,7 @@ func (handler *TTYProtocolWSLocked) Write(buff []byte) (n int, err error) {
 		Data: buff,
 		Size: len(buff),
 	}
-	data, err := handler.marshalMsg(msgWrite)
+	data, err := handler.MarshalMsg(msgWrite)
 	if err != nil {
 		return 0, err
 	}

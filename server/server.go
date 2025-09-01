@@ -155,6 +155,16 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 	return server
 }
 
+// GetSession returns the TTY session for testing
+func (server *TTYServer) GetSession() *ttyShareSession {
+	return server.session
+}
+
+// GetHandler returns the HTTP handler for testing
+func (server *TTYServer) GetHandler() http.Handler {
+	return server.httpServer.Handler
+}
+
 func (server *TTYServer) handleTTYWebsocket(w http.ResponseWriter, r *http.Request, crossOrigin bool) {
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusForbidden)

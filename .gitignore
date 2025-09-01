@@ -7,3 +7,8 @@ out
 playground/
 .vscode/
 tmp-*
+
+# Compiled binaries
+tty-share
+tty-share-test
+*.exe
