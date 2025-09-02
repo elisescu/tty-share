@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/elisescu/tty-share/proxy"
 	"github.com/elisescu/tty-share/server"
@@ -90,6 +91,7 @@ Flags:
 	tunnelConfig := flag.String("L", "", "[c] TCP tunneling addresses: local_port:remote_host:remote_port. The client will listen on local_port for TCP connections, and will forward those to the from the server side to remote_host:remote_port")
 	crossOrgin := flag.Bool("cross-origin", false, "[s] Allow cross origin requests to the server")
 	baseUrlPath := flag.String("base-url-path", "", "[s] The base URL path on the serve")
+	timeoutDuration := flag.Duration("timeout", 0, "[s] The max duration the tty-server session should run for, before timing out. The value is a sequence of numbers with time units, eg. 10m, 1h, 1h30m10s")
 
 	verbose := flag.Bool("verbose", false, "Verbose logging")
 	flag.Usage = func() {
@@ -192,6 +194,10 @@ Flags:
 
 	fmt.Printf("local session: http://%s%s/s/local/\n", *listenAddress, sanitizedBaseUrlPath)
 
+	if *timeoutDuration > 0 {
+		fmt.Printf("Session will automatically terminate after %s\n", timeoutDuration.String())
+	}
+
 	if !*noWaitEnter && !*headless {
 		fmt.Printf("Press Enter to continue!\n")
 		bufio.NewReader(os.Stdin).ReadString('\n')
@@ -249,7 +255,37 @@ Flags:
 		}()
 	}
 
-	ptyMaster.Wait()
+	// Create a channel to coordinate termination
+	done := make(chan struct{})
+
+	// If timeout is set, create a timer to automatically terminate the session
+	if *timeoutDuration > 0 {
+		go func() {
+			select {
+			case <-time.After(*timeoutDuration):
+				log.Infof("Session timed out after %s", timeoutDuration.String())
+				fmt.Printf("\r\nSession timed out after %s\r\n", timeoutDuration.String())
+				close(done)
+			case <-done:
+				// PTY exited before timeout, do nothing
+			}
+		}()
+	}
+
+	// Wait for either the timeout or the pty to finish
+	go func() {
+		ptyMaster.Wait()
+		// Only close the channel if it hasn't been closed already
+		select {
+		case <-done:
+			// Channel is already closed, do nothing
+		default:
+			close(done)
+		}
+	}()
+
+	// Wait for termination signal
+	<-done
 	fmt.Printf("tty-share finished\n\n\r")
 	server.Stop()
 }
