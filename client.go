@@ -37,9 +37,10 @@ type ttyShareClient struct {
 		remoteW uint16
 		remoteH uint16
 	}
-	winSizesMutex    sync.Mutex
-	tunnelMuxSession *yamux.Session
-	encryptionKey    []byte // nil if no encryption
+	winSizesMutex       sync.Mutex
+	tunnelMuxSession    *yamux.Session
+	encryptionKey       []byte // nil if no encryption
+	receivedEncrypted   bool   // true if we've seen encrypted messages from server
 }
 
 func newTtyShareClient(url string, detachKeys string, tunnelConfig *string) *ttyShareClient {
@@ -75,6 +76,10 @@ func (kl *keyListener) Read(data []byte) (n int, err error) {
 	}
 
 	return
+}
+
+func (c *ttyShareClient) isEncryptedSession() bool {
+	return c.receivedEncrypted
 }
 
 func (c *ttyShareClient) updateAndDecideStdoutMuted() {
@@ -292,6 +297,10 @@ func (c *ttyShareClient) Run() (err error) {
 					c.updateThisWinSize()
 					c.updateAndDecideStdoutMuted()
 				},
+				// onEncrypted
+				func() {
+					c.receivedEncrypted = true
+				},
 			)
 
 			if err != nil {
@@ -305,16 +314,41 @@ func (c *ttyShareClient) Run() (err error) {
 	}
 
 	writeLoop := func() {
-		kl := &keyListener{
-			wrappedReader: term.NewEscapeProxy(os.Stdin, detachBytes),
-			ioFlagAtomicP: &c.ioFlagAtomic,
-		}
-		_, err := io.Copy(protoWS, kl)
+		// Check if we have a valid encryption key for encrypted sessions
+		if c.encryptionKey == nil && c.isEncryptedSession() {
+			// Read-only mode: don't send any input to server when key is missing
+			log.Debugf("Session is encrypted but no key available - entering read-only mode")
+			fmt.Printf("\r\n🔒 Session is encrypted. Read-only mode (no key to encrypt input).\r\n")
+			
+			// Just consume input but don't send anything
+			kl := &keyListener{
+				wrappedReader: term.NewEscapeProxy(os.Stdin, detachBytes),
+				ioFlagAtomicP: &c.ioFlagAtomic,
+			}
+			
+			// Read input but discard it (read-only mode)
+			buffer := make([]byte, 1024)
+			for {
+				_, err := kl.Read(buffer)
+				if err != nil {
+					log.Debugf("Input reading stopped: %s", err.Error())
+					c.Stop()
+					return
+				}
+			}
+		} else {
+			// Normal mode: send input to server
+			kl := &keyListener{
+				wrappedReader: term.NewEscapeProxy(os.Stdin, detachBytes),
+				ioFlagAtomicP: &c.ioFlagAtomic,
+			}
+			_, err := io.Copy(protoWS, kl)
 
-		if err != nil {
-			log.Debugf("Connection closed: %s", err.Error())
-			c.Stop()
-			return
+			if err != nil {
+				log.Debugf("Connection closed: %s", err.Error())
+				c.Stop()
+				return
+			}
 		}
 	}
 

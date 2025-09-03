@@ -11,4 +11,7 @@ tmp-*
 # Compiled binaries
 tty-share
 tty-share-test
+test-binary
+go-encrypt-test
+test/go-encrypt-test
 *.exe

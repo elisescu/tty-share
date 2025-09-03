@@ -98,6 +98,7 @@ func (session *ttyShareSession) HandleWSConnection(wsConn *websocket.Conn) {
 			func(cols, rows int) {
 				session.ptyHandler.Refresh()
 			},
+			nil, // onEncrypted - not needed for server side
 		)
 
 		if err != nil {

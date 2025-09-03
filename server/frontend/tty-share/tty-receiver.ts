@@ -12,6 +12,8 @@ class TTYReceiver {
     private xterminal: Terminal;
     private containerElement: HTMLElement;
     private encryptionKey: Uint8Array | null;
+    private hasReceivedEncrypted: boolean = false;
+    private hasShownReadOnlyWarning: boolean = false;
 
     constructor(wsAddress: string, container: HTMLDivElement) {
         // Extract encryption key from URL hash
@@ -73,6 +75,7 @@ class TTYReceiver {
             let message = JSON.parse(ev.data)
 
             if (message.Type === "Encrypted") {
+                this.hasReceivedEncrypted = true;
                 await this.handleEncryptedMessage(message);
             } else {
                 // Handle unencrypted messages (backward compatibility)
@@ -81,15 +84,23 @@ class TTYReceiver {
         }
 
         this.xterminal.onData((data:string) => {
-            this.sendInputData(connection, data);
+            // Only send input if we have encryption key or session is unencrypted
+            if (this.encryptionKey || !this.hasReceivedEncrypted) {
+                this.sendInputData(connection, data);
+            } else {
+                // Read-only mode: show indicator that input is ignored
+                console.log("🔒 Input ignored - no encryption key for encrypted session");
+                // Visual feedback in terminal for user
+                this.xterminal.write('\x1b[33m[INPUT DISABLED]\x1b[0m');
+            }
         });
 
     }
 
     private async handleEncryptedMessage(message: any): Promise<void> {
         try {
-            const msgData = base64.decode(message.Data);
-            const encryptedMsg = JSON.parse(msgData);
+            // message.Data is already a JSON string for encrypted messages
+            const encryptedMsg = JSON.parse(message.Data);
 
             if (this.encryptionKey) {
                 // Decrypt the message
@@ -103,9 +114,17 @@ class TTYReceiver {
                 // Handle the decrypted message
                 this.handleUnencryptedMessage(decryptedMessage);
             } else {
-                // No encryption key - show encrypted data as-is
+                // No encryption key - show encrypted data as-is and switch to read-only
                 const encryptedText = `\x1b[31m🔒 [ENCRYPTED]\x1b[0m `;
                 this.xterminal.write(encryptedText);
+                
+                // Show read-only indicator on first encrypted message
+                if (!this.hasShownReadOnlyWarning) {
+                    setTimeout(() => {
+                        this.xterminal.write('\r\n\x1b[33m🔒 READ-ONLY: No encryption key - input disabled\x1b[0m\r\n');
+                    }, 100);
+                    this.hasShownReadOnlyWarning = true;
+                }
             }
         } catch (error) {
             console.error('Failed to handle encrypted message:', error);

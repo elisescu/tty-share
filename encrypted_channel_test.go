@@ -165,6 +165,7 @@ func TestEncryptedChannelWithoutKey(t *testing.T) {
 			func(cols, rows int) {
 				// Window size changes
 			},
+			nil, // onEncrypted - not needed for test
 		)
 		if err != nil {
 			t.Logf("Client read error: %v", err)

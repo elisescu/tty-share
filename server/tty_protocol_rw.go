@@ -40,6 +40,7 @@ type MsgEncrypted struct {
 
 type OnMsgWrite func(data []byte)
 type OnMsgWinSize func(cols, rows int)
+type OnMsgEncrypted func() // Called when an encrypted message is detected
 
 type TTYProtocolWSLocked struct {
 	ws            *websocket.Conn
@@ -117,7 +118,7 @@ func (handler *TTYProtocolWSLocked) MarshalMsg(aMessage interface{}) (_ []byte, 
 	return nil, nil
 }
 
-func (handler *TTYProtocolWSLocked) ReadAndHandle(onWrite OnMsgWrite, onWinSize OnMsgWinSize) (err error) {
+func (handler *TTYProtocolWSLocked) ReadAndHandle(onWrite OnMsgWrite, onWinSize OnMsgWinSize, onEncrypted OnMsgEncrypted) (err error) {
 	var msg MsgWrapper
 
 	_, r, err := handler.ws.NextReader()
@@ -134,6 +135,11 @@ func (handler *TTYProtocolWSLocked) ReadAndHandle(onWrite OnMsgWrite, onWinSize 
 
 	switch msg.Type {
 	case MsgIDEncrypted:
+		// Call the encrypted message callback if provided
+		if onEncrypted != nil {
+			onEncrypted()
+		}
+		
 		// Handle encrypted message
 		if handler.encryptionKey != nil {
 			var encryptedMsg MsgEncrypted

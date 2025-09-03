@@ -65,9 +65,20 @@ jobs:
         run: |
           go test -v ./crypto/
 
+      - name: Run separate encryption/decryption unit tests
+        run: |
+          go test -v -run TestEncryptionFunction ./crypto/
+          go test -v -run TestDecryptionFunction ./crypto/
+          go test -v -run TestEncryptDecryptRoundTrip ./crypto/
+
       - name: Run encrypted channel integration test
         run: |
           go test -v -run TestEncryptedChannel .
+
+      - name: Run cross-language encryption test (Go -> Node.js)
+        run: |
+          chmod +x test/test_cross_lang_crypto.sh
+          cd test && ./test_cross_lang_crypto.sh
 
       - name: Test encryption flag functionality
         run: |
