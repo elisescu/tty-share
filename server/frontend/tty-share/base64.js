@@ -150,6 +150,19 @@ var Base64 = {
             bytes[i] = binary_string.charCodeAt(i);
         }
         return bytes;
+    },
+
+    base64ToUint8Array: function (input) {
+        return this.base64ToArrayBuffer(input);
+    },
+
+    uint8ArrayToBase64: function (bytes) {
+        var binary = '';
+        var len = bytes.byteLength;
+        for (var i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return window.btoa(binary);
     }
 }
 

@@ -1,0 +1,156 @@
+---
+name: End-to-End Encryption Tests
+
+on:
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'crypto/**'
+      - 'server/**'
+      - 'client.go'
+      - 'main.go'
+      - '**/*encryption*'
+      - '**/*crypto*'
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'crypto/**'
+      - 'server/**'
+      - 'client.go'
+      - 'main.go'
+      - '**/*encryption*'
+      - '**/*crypto*'
+
+jobs:
+  encryption-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.18'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16.13.0'
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Cache Node modules  
+        uses: actions/cache@v3
+        with:
+          path: server/frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('server/frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Build frontend
+        run: |
+          cd server && make frontend
+
+      - name: Run crypto unit tests
+        run: |
+          go test -v ./crypto/
+
+      - name: Run separate encryption/decryption unit tests
+        run: |
+          go test -v -run TestEncryptionFunction ./crypto/
+          go test -v -run TestDecryptionFunction ./crypto/
+          go test -v -run TestEncryptDecryptRoundTrip ./crypto/
+
+      - name: Run encrypted channel integration test
+        run: |
+          go test -v -run TestEncryptedChannel .
+
+      - name: Run cross-language encryption test (Go -> Node.js)
+        run: |
+          chmod +x test/test_cross_lang_crypto.sh
+          cd test && ./test_cross_lang_crypto.sh
+
+      - name: Test encryption flag functionality
+        run: |
+          go build -o tty-share-test
+          # Test help shows encryption flag
+          ./tty-share-test --help | grep -q "e2e-encryption" || exit 1
+          # Clean up test binary
+          rm -f tty-share-test
+
+      - name: Test with encryption enabled (smoke test)
+        run: |
+          go build -o tty-share-test  
+          # Start server with encryption in background
+          timeout 3s ./tty-share-test --e2e-encryption --headless --no-wait > server_output.log 2>&1 &
+          SERVER_PID=$!
+          sleep 1
+          
+          # Check if server started and generated encrypted URL
+          if grep -q "#key=" server_output.log; then
+            echo "✅ Server generated encrypted URL successfully"
+            grep "#key=" server_output.log
+          else
+            echo "❌ Server did not generate encrypted URL"
+            cat server_output.log
+            exit 1
+          fi
+          
+          # Clean up
+          kill $SERVER_PID 2>/dev/null || true
+          rm -f tty-share-test server_output.log
+
+      - name: Verify binary exclusion
+        run: |
+          # Ensure no binaries are tracked by git
+          if git ls-files | grep -E "(tty-share$|tty-share-test$|\.exe$)"; then
+            echo "❌ Binary files found in git tracking"
+            exit 1
+          else
+            echo "✅ No binary files tracked by git"
+          fi
+
+  security-validation:
+    runs-on: ubuntu-latest
+    needs: encryption-tests
+    
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.18'
+
+      - name: Security checks
+        run: |
+          # Check for hardcoded keys or secrets
+          if grep -r "key.*=" . --include="*.go" --include="*.ts" | grep -v "encryptionKey\|KeyToBase64\|KeyFromBase64\|test"; then
+            echo "⚠️  Potential hardcoded keys found"
+            exit 1
+          fi
+          
+          # Verify crypto usage
+          if ! grep -q "AES-GCM" crypto/encryption.go; then
+            echo "❌ AES-GCM not found in encryption implementation"
+            exit 1
+          fi
+          
+          # Check that nonces are randomly generated
+          if ! grep -q "rand.Read(nonce)" crypto/encryption.go; then
+            echo "❌ Nonces should be randomly generated"
+            exit 1
+          fi
+          
+          echo "✅ Security validation passed"

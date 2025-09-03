@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/elisescu/tty-share/crypto"
 	"github.com/elisescu/tty-share/proxy"
 	"github.com/elisescu/tty-share/server"
 	ttyServer "github.com/elisescu/tty-share/server"
@@ -18,7 +19,7 @@ import (
 // complex linker flags that could set the version from the outside
 var version string = "2.4.1"
 
-func createServer(frontListenAddress string, frontendPath string, pty server.PTYHandler, sessionID string, allowTunneling bool, crossOrigin bool, baseUrlPath string) *server.TTYServer {
+func createServer(frontListenAddress string, frontendPath string, pty server.PTYHandler, sessionID string, allowTunneling bool, crossOrigin bool, baseUrlPath string, encryptionKey []byte) *server.TTYServer {
 	config := ttyServer.TTYServerConfig{
 		FrontListenAddress: frontListenAddress,
 		FrontendPath:       frontendPath,
@@ -27,6 +28,7 @@ func createServer(frontListenAddress string, frontendPath string, pty server.PTY
 		AllowTunneling:     allowTunneling,
 		CrossOrigin:        crossOrigin,
 		BaseUrlPath:        baseUrlPath,
+		EncryptionKey:      encryptionKey,
 	}
 
 	server := ttyServer.NewTTYServer(config)
@@ -51,7 +53,7 @@ Usage:
       tty-share [[--args <"args">] --command <executable>]                        # share the terminal and get a session URL, as a server
                 [--logfile <file name>] [--listen <[ip]:port>]
                 [--frontend-path <path>] [--tty-proxy <host:port>]
-                [--readonly] [--public] [no-tls] [--verbose] [--version]
+                [--readonly] [--public] [--e2e-encryption] [no-tls] [--verbose] [--version]
       tty-share [--verbose] [--logfile <file name>] [-L <local_port>:<remote_host>:<remote_port>]
                 [--detach-keys]                     <session URL>                 # connect to an existing session, as a client
 
@@ -90,6 +92,7 @@ Flags:
 	tunnelConfig := flag.String("L", "", "[c] TCP tunneling addresses: local_port:remote_host:remote_port. The client will listen on local_port for TCP connections, and will forward those to the from the server side to remote_host:remote_port")
 	crossOrgin := flag.Bool("cross-origin", false, "[s] Allow cross origin requests to the server")
 	baseUrlPath := flag.String("base-url-path", "", "[s] The base URL path on the serve")
+	e2eEncryption := flag.Bool("e2e-encryption", false, "[s] Enable end-to-end encryption")
 
 	verbose := flag.Bool("verbose", false, "Verbose logging")
 	flag.Usage = func() {
@@ -142,6 +145,19 @@ Flags:
 		os.Exit(1)
 	}
 
+	// Generate encryption key if encryption is enabled
+	var encryptionKey []byte
+	var keyHashFragment string
+	if *e2eEncryption {
+		key, err := crypto.GenerateEncryptionKey()
+		if err != nil {
+			log.Errorf("Failed to generate encryption key: %s\n", err.Error())
+			return
+		}
+		encryptionKey = key
+		keyHashFragment = "#key=" + crypto.KeyToBase64(key)
+	}
+
 	sessionID := ""
 	publicURL := ""
 	if *publicSession {
@@ -153,7 +169,7 @@ Flags:
 
 		go proxy.RunProxy()
 		sessionID = proxy.SessionID
-		publicURL = proxy.PublicURL
+		publicURL = proxy.PublicURL + keyHashFragment
 		defer proxy.Stop()
 	}
 
@@ -190,7 +206,7 @@ Flags:
 		sanitizedBaseUrlPath = "/" + sanitizedBaseUrlPath
 	}
 
-	fmt.Printf("local session: http://%s%s/s/local/\n", *listenAddress, sanitizedBaseUrlPath)
+	fmt.Printf("local session: http://%s%s/s/local/%s\n", *listenAddress, sanitizedBaseUrlPath, keyHashFragment)
 
 	if !*noWaitEnter && !*headless {
 		fmt.Printf("Press Enter to continue!\n")
@@ -209,7 +225,7 @@ Flags:
 		pty = &nilPTY{}
 	}
 
-	server := createServer(*listenAddress, *frontendPath, pty, sessionID, *allowTunneling, *crossOrgin, sanitizedBaseUrlPath)
+	server := createServer(*listenAddress, *frontendPath, pty, sessionID, *allowTunneling, *crossOrgin, sanitizedBaseUrlPath, encryptionKey)
 	if cols, rows, e := ptyMaster.GetWinSize(); e == nil {
 		server.WindowSize(cols, rows)
 	}

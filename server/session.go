@@ -14,6 +14,7 @@ type ttyShareSession struct {
 	isAlive             bool
 	lastWindowSizeMsg   MsgTTYWinSize
 	ptyHandler           PTYHandler
+	encryptionKey       []byte // nil if encryption is disabled
 }
 
 func copyList(l *list.List) *list.List {
@@ -24,11 +25,12 @@ func copyList(l *list.List) *list.List {
 	return newList
 }
 
-func newTTYShareSession(ptyHandler PTYHandler) *ttyShareSession {
+func newTTYShareSession(ptyHandler PTYHandler, encryptionKey []byte) *ttyShareSession {
 
 	ttyShareSession := &ttyShareSession{
 		ttyProtoConnections: list.New(),
 		ptyHandler:           ptyHandler,
+		encryptionKey:       encryptionKey,
 	}
 
 	return ttyShareSession
@@ -75,7 +77,7 @@ func (session *ttyShareSession) forEachReceiverLock(cb func(rcvConn *TTYProtocol
 // Will run on the TTYReceiver connection go routine (e.g.: on the websockets connection routine)
 // When HandleWSConnection will exit, the connection to the TTYReceiver will be closed
 func (session *ttyShareSession) HandleWSConnection(wsConn *websocket.Conn) {
-	protoConn := NewTTYProtocolWSLocked(wsConn)
+	protoConn := NewTTYProtocolWSLocked(wsConn, session.encryptionKey)
 
 	session.mainRWLock.Lock()
 	rcvHandleEl := session.ttyProtoConnections.PushBack(protoConn)
@@ -96,6 +98,7 @@ func (session *ttyShareSession) HandleWSConnection(wsConn *websocket.Conn) {
 			func(cols, rows int) {
 				session.ptyHandler.Refresh()
 			},
+			nil, // onEncrypted - not needed for server side
 		)
 
 		if err != nil {
