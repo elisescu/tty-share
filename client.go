@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -38,9 +39,10 @@ type ttyShareClient struct {
 	}
 	winSizesMutex    sync.Mutex
 	tunnelMuxSession *yamux.Session
+	insecure         bool
 }
 
-func newTtyShareClient(url string, detachKeys string, tunnelConfig *string) *ttyShareClient {
+func newTtyShareClient(url string, detachKeys string, tunnelConfig *string, insecure bool) *ttyShareClient {
 	return &ttyShareClient{
 		url:             url,
 		ttyWsConn:       nil,
@@ -48,6 +50,7 @@ func newTtyShareClient(url string, detachKeys string, tunnelConfig *string) *tty
 		wcChan:          make(chan os.Signal, 1),
 		ioFlagAtomic:    1,
 		tunnelAddresses: tunnelConfig,
+		insecure:        insecure,
 	}
 }
 
@@ -105,10 +108,30 @@ func (c *ttyShareClient) updateThisWinSize() {
 func (c *ttyShareClient) Run() (err error) {
 	log.Debugf("Connecting as a client to %s ..", c.url)
 
-	resp, err := http.Get(c.url)
+	httpURL, err := url.Parse(c.url)
+	if err != nil {
+		return
+	}
+
+	client := &http.Client{}
+
+	if httpURL.Scheme == "https" {
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: c.insecure,
+			},
+		}
+	}
+	resp, err := client.Get(c.url)
 
 	if err != nil {
 		return
+	}
+
+	// Build the WS URL from the host part of the given http URL and the wsPath
+	wsScheme := "ws"
+	if httpURL.Scheme == "https" {
+		wsScheme = "wss"
 	}
 
 	// Get the path of the websockts route from the header
@@ -117,21 +140,20 @@ func (c *ttyShareClient) Run() (err error) {
 
 	ttyTunnelPath := resp.Header.Get("TTYSHARE-TUNNEL-WSPATH")
 
-	// Build the WS URL from the host part of the given http URL and the wsPath
-	httpURL, err := url.Parse(c.url)
-	if err != nil {
-		return
-	}
-	wsScheme := "ws"
-	if httpURL.Scheme == "https" {
-		wsScheme = "wss"
-	}
 	ttyWsURL := wsScheme + "://" + httpURL.Host + ttyWsPath
 	ttyTunnelURL := wsScheme + "://" + httpURL.Host + ttyTunnelPath
 
 	log.Debugf("Built the WS URL from the headers: %s", ttyWsURL)
 
-	c.ttyWsConn, _, err = websocket.DefaultDialer.Dial(ttyWsURL, nil)
+	dialer := websocket.DefaultDialer
+	if httpURL.Scheme == "https" && c.insecure {
+		dialer.TLSClientConfig = &tls.Config{
+			// Set InsecureSkipVerify to true to disable certificate validation
+			InsecureSkipVerify: true,
+		}
+	}
+
+	c.ttyWsConn, _, err = dialer.Dial(ttyWsURL, nil)
 	if err != nil {
 		return
 	}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -36,13 +37,15 @@ type AASessionTemplateModel struct {
 
 // TTYServerConfig is used to configure the tty server before it is started
 type TTYServerConfig struct {
-	FrontListenAddress string
-	FrontendPath       string
-	PTY                PTYHandler
-	SessionID          string
-	AllowTunneling     bool
-	CrossOrigin        bool
-	BaseUrlPath        string
+	FrontListener  net.Listener
+	FrontendPath   string
+	PTY            PTYHandler
+	SessionID      string
+	AllowTunneling bool
+	CrossOrigin    bool
+	BaseUrlPath    string
+	GreetTimeout   time.Duration
+	Seats          int
 }
 
 // TTYServer represents the instance of a tty server
@@ -90,9 +93,7 @@ func NewTTYServer(config TTYServerConfig) (server *TTYServer) {
 	server = &TTYServer{
 		config: config,
 	}
-	server.httpServer = &http.Server{
-		Addr: config.FrontListenAddress,
-	}
+	server.httpServer = &http.Server{}
 	routesHandler := mux.NewRouter()
 
 	installHandlers := func(session string) {
@@ -159,6 +160,20 @@ func (server *TTYServer) handleTTYWebsocket(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
+
+	switch server.config.Seats {
+	case 0:
+		// unlimited
+	case -1:
+		log.Warnf("No longer accepting clients")
+		return
+	default:
+		if server.session.ttyProtoConnectionsLen() >= server.config.Seats {
+			log.Warnf("All seats used (%d)", server.config.Seats)
+			return
+		}
+	}
+
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
@@ -183,6 +198,12 @@ func (server *TTYServer) handleTTYWebsocket(w http.ResponseWriter, r *http.Reque
 	// On a new connection, ask for a refresh/redraw of the terminal app
 	server.config.PTY.Refresh()
 	server.session.HandleWSConnection(conn)
+
+	// When a connection ends, close the server if
+	// there are no more connections and we can't accept new ones.
+	if server.config.Seats < 0 && server.session.ttyProtoConnectionsLen() == 0 {
+		server.httpServer.Close()
+	}
 }
 
 func (server *TTYServer) handleTunnelWebsocket(w http.ResponseWriter, r *http.Request) {
@@ -288,7 +309,17 @@ func (server *TTYServer) handleWithTemplateHtml(responseWriter http.ResponseWrit
 }
 
 func (server *TTYServer) Run() (err error) {
-	err = server.httpServer.ListenAndServe()
+	if server.config.GreetTimeout > 0 {
+		time.AfterFunc(server.config.GreetTimeout, func() {
+			if server.session.ttyProtoConnectionsLen() == 0 {
+				server.Stop()
+			} else {
+				// stop accepting new connections
+				server.config.Seats = -1
+			}
+		})
+	}
+	err = server.httpServer.Serve(server.config.FrontListener)
 	log.Debug("Server finished")
 	return
 }

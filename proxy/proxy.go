@@ -30,7 +30,7 @@ type proxyConnection struct {
 	PublicURL       string
 }
 
-func NewProxyConnection(backConnAddrr, proxyAddr string, noTLS bool) (*proxyConnection, error) {
+func NewProxyConnection(backConnAddrr, proxyAddr string, noTLS bool, insecure bool) (*proxyConnection, error) {
 	var conn net.Conn
 	var err error
 
@@ -44,7 +44,11 @@ func NewProxyConnection(backConnAddrr, proxyAddr string, noTLS bool) (*proxyConn
 		if err != nil {
 			return nil, err
 		}
-		conn, err = tls.Dial("tcp", proxyAddr, &tls.Config{RootCAs: roots})
+		tlsConfig := tls.Config{
+			RootCAs:            roots,
+			InsecureSkipVerify: insecure,
+		}
+		conn, err = tls.Dial("tcp", proxyAddr, &tlsConfig)
 		if err != nil {
 			return nil, err
 		}

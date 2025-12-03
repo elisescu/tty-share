@@ -2,31 +2,41 @@ package main
 
 import (
 	"bufio"
+	"crypto/x509"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strings"
+	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/elisescu/tty-share/proxy"
 	"github.com/elisescu/tty-share/server"
 	ttyServer "github.com/elisescu/tty-share/server"
-	log "github.com/sirupsen/logrus"
 )
 
 // This should be updated manually. Most of distro packagers prefer to build golang without
 // complex linker flags that could set the version from the outside
 var version string = "2.4.1"
 
-func createServer(frontListenAddress string, frontendPath string, pty server.PTYHandler, sessionID string, allowTunneling bool, crossOrigin bool, baseUrlPath string) *server.TTYServer {
+const exitCodex509UnknownAuthorityError = 2
+const exitCodeGenericError = 1
+
+func createServer(frontListener net.Listener, frontendPath string, pty server.PTYHandler, sessionID string, allowTunneling bool, crossOrigin bool, baseUrlPath string, greetTimeout time.Duration, seats int) *server.TTYServer {
 	config := ttyServer.TTYServerConfig{
-		FrontListenAddress: frontListenAddress,
-		FrontendPath:       frontendPath,
-		PTY:                pty,
-		SessionID:          sessionID,
-		AllowTunneling:     allowTunneling,
-		CrossOrigin:        crossOrigin,
-		BaseUrlPath:        baseUrlPath,
+		FrontListener:  frontListener,
+		FrontendPath:   frontendPath,
+		PTY:            pty,
+		SessionID:      sessionID,
+		AllowTunneling: allowTunneling,
+		CrossOrigin:    crossOrigin,
+		BaseUrlPath:    baseUrlPath,
+		GreetTimeout:   greetTimeout,
+		Seats:          seats,
 	}
 
 	server := ttyServer.NewTTYServer(config)
@@ -74,7 +84,7 @@ Flags:
 	}
 	commandArgs := flag.String("args", "", "[s] The command arguments")
 	logFileName := flag.String("logfile", "-", "The name of the file to log")
-	listenAddress := flag.String("listen", "localhost:8000", "[s] tty-server address")
+	listenAddress := flag.String("listen", "localhost:8000", "[s] tty-server address, \"localhost:0\" to allocate a free port")
 	versionFlag := flag.Bool("version", false, "Print the tty-share version")
 	frontendPath := flag.String("frontend-path", "", "[s] The path to the frontend resources. By default, these resources are included in the server binary, so you only need this path if you don't want to use the bundled ones.")
 	proxyServerAddress := flag.String("tty-proxy", "on.tty-share.com:4567", "[s] Address of the proxy for public facing connections")
@@ -85,7 +95,10 @@ Flags:
 	headless := flag.Bool("headless", false, "[s] Don't expect an interactive terminal at stdin")
 	headlessCols := flag.Int("headless-cols", 80, "[s] Number of cols for the allocated pty when running headless")
 	headlessRows := flag.Int("headless-rows", 25, "[s] Number of rows for the allocated pty when running headless")
+	greetTimeout := flag.Duration("greet-timeout", 0, "[s] Maximum duration clients are accepted. Set to 0 for no limit.")
+	seats := flag.Int("seats", 0, "[s] The number of allowed proxy connections. Zero means as many as possible.")
 	detachKeys := flag.String("detach-keys", "ctrl-o,ctrl-c", "[c] Sequence of keys to press for closing the connection. Supported: https://godoc.org/github.com/moby/term#pkg-variables.")
+	insecure := flag.Bool("k", false, "Accept to run with a proxy presenting a invalid certificate.")
 	allowTunneling := flag.Bool("A", false, "[s] Allow clients to create a TCP tunnel")
 	tunnelConfig := flag.String("L", "", "[c] TCP tunneling addresses: local_port:remote_host:remote_port. The client will listen on local_port for TCP connections, and will forward those to the from the server side to remote_host:remote_port")
 	crossOrgin := flag.Bool("cross-origin", false, "[s] Allow cross origin requests to the server")
@@ -126,11 +139,17 @@ Flags:
 	if len(args) == 1 {
 		connectURL := args[0]
 
-		client := newTtyShareClient(connectURL, *detachKeys, tunnelConfig)
+		client := newTtyShareClient(connectURL, *detachKeys, tunnelConfig, *insecure)
 
 		err := client.Run()
 		if err != nil {
+			if errors.As(err, &x509.UnknownAuthorityError{}) || errors.As(err, &x509.HostnameError{}) {
+				_, suffix, _ := strings.Cut(err.Error(), ": ")
+				fmt.Printf("%s\n", suffix)
+				os.Exit(exitCodex509UnknownAuthorityError)
+			}
 			fmt.Printf("Cannot connect to the remote session. Make sure the URL points to a valid tty-share session.\n")
+			os.Exit(exitCodeGenericError)
 		}
 		fmt.Printf("\ntty-share disconnected\n\n")
 		return
@@ -139,16 +158,29 @@ Flags:
 	// tty-share works as a server, from here on
 	if !isStdinTerminal() && !*headless {
 		fmt.Printf("Input not a tty\n")
-		os.Exit(1)
+		os.Exit(exitCodeGenericError)
 	}
+
+	// allocate a free port if port is zero
+	listener, err := net.Listen("tcp", *listenAddress)
+	if err != nil {
+		log.Errorf("Can't listen on %s: %s\n", *listenAddress, err.Error())
+		return
+	}
+
+	defer listener.Close()
+	*listenAddress = listener.Addr().String()
 
 	sessionID := ""
 	publicURL := ""
 	if *publicSession {
-		proxy, err := proxy.NewProxyConnection(*listenAddress, *proxyServerAddress, *noTLS)
+		proxy, err := proxy.NewProxyConnection(*listenAddress, *proxyServerAddress, *noTLS, *insecure)
 		if err != nil {
 			log.Errorf("Can't connect to the proxy: %s\n", err.Error())
-			return
+			if errors.As(err, &x509.UnknownAuthorityError{}) || errors.As(err, &x509.HostnameError{}) {
+				os.Exit(exitCodex509UnknownAuthorityError)
+			}
+			os.Exit(exitCodeGenericError)
 		}
 
 		go proxy.RunProxy()
@@ -170,7 +202,7 @@ Flags:
 	}
 
 	ptyMaster := ptyMasterNew(*headless, *headlessCols, *headlessRows)
-	err := ptyMaster.Start(*commandName, strings.Fields(*commandArgs), envVars)
+	err = ptyMaster.Start(*commandName, strings.Fields(*commandArgs), envVars)
 	if err != nil {
 		log.Errorf("Cannot start the %s command: %s", *commandName, err.Error())
 		return
@@ -209,7 +241,7 @@ Flags:
 		pty = &nilPTY{}
 	}
 
-	server := createServer(*listenAddress, *frontendPath, pty, sessionID, *allowTunneling, *crossOrgin, sanitizedBaseUrlPath)
+	server := createServer(listener, *frontendPath, pty, sessionID, *allowTunneling, *crossOrgin, sanitizedBaseUrlPath, *greetTimeout, *seats)
 	if cols, rows, e := ptyMaster.GetWinSize(); e == nil {
 		server.WindowSize(cols, rows)
 	}

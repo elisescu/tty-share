@@ -13,7 +13,7 @@ type ttyShareSession struct {
 	ttyProtoConnections *list.List
 	isAlive             bool
 	lastWindowSizeMsg   MsgTTYWinSize
-	ptyHandler           PTYHandler
+	ptyHandler          PTYHandler
 }
 
 func copyList(l *list.List) *list.List {
@@ -28,7 +28,7 @@ func newTTYShareSession(ptyHandler PTYHandler) *ttyShareSession {
 
 	ttyShareSession := &ttyShareSession{
 		ttyProtoConnections: list.New(),
-		ptyHandler:           ptyHandler,
+		ptyHandler:          ptyHandler,
 	}
 
 	return ttyShareSession
@@ -70,6 +70,13 @@ func (session *ttyShareSession) forEachReceiverLock(cb func(rcvConn *TTYProtocol
 			break
 		}
 	}
+}
+
+// ttyProtoConnectionsLen is a thread safe length func for the ttyProtoConnections linked list.
+func (session *ttyShareSession) ttyProtoConnectionsLen() int {
+	session.mainRWLock.RLock()
+	defer session.mainRWLock.RUnlock()
+	return session.ttyProtoConnections.Len()
 }
 
 // Will run on the TTYReceiver connection go routine (e.g.: on the websockets connection routine)
