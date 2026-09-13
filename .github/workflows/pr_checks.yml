@@ -1,11 +1,7 @@
----
 name: check the code builds
-
 on:
   pull_request:
-    branches: [ "master" ]
-
-
+    branches: ["master"]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,43 +17,40 @@ jobs:
             goarch: amd64
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 [pinned by action-pin]
         with:
           lfs: true
           fetch-depth: 0
       - name: Set up Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5 [pinned by action-pin]
         with:
           go-version: 1.25
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 [pinned by action-pin]
         with:
           node-version: 22
-
       - name: Build stage
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-
         run: |
           # Build frontend assets first
           make -C server frontend
           # For PR builds, use a default version since GITHUB_REF won't have a proper version
           v="dev-$(date +%Y%m%d)-$(git rev-parse --short HEAD)"
           go build -x -v -mod=vendor -ldflags "-X main.version=${v} -w -s" -o "tty-share_${GOOS}-${GOARCH}"
-
       - name: Upload to artifact storage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 [pinned by action-pin]
         with:
           name: tty-share-${{ matrix.goos }}-${{ matrix.goarch }}
           path: tty-share_${{ matrix.goos }}-${{ matrix.goarch }}
           if-no-files-found: error
           # only meant for sharing with the publish job
-          retention-days: 1
 
+          retention-days: 1
   publish:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4 [pinned by action-pin]
         with:
           pattern: tty-share-*

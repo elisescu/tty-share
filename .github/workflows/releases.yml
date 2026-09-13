@@ -1,12 +1,9 @@
----
 name: releases
-
 on:
   workflow_dispatch:
   push:
     tags:
       - "v*"
-
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -24,17 +21,16 @@ jobs:
             goarch: arm64
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 [pinned by action-pin]
         with:
           fetch-depth: 0
       - name: Set up Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5 [pinned by action-pin]
         with:
           go-version: 1.25
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 [pinned by action-pin]
         with:
           node-version: 22
-
       - name: Check if the version string was updated
         run: |
           VERSION=$(echo ${GITHUB_REF} | awk -F/ '{print substr($3,2,10);}')
@@ -43,7 +39,6 @@ jobs:
             echo "The version string inside main.go should be updated to $VERSION"
             exit 1
           fi
-
       - name: Build for ${{ matrix.goos }}-${{ matrix.goarch }}
         env:
           GOOS: ${{ matrix.goos }}
@@ -52,19 +47,22 @@ jobs:
           # Build frontend assets first
           make -C server frontend
           go build -x -v -mod=vendor -o "tty-share_${GOOS}-${GOARCH}"
-
       - name: Release
-        uses: elisescu/action-gh-release@v2
+        uses: elisescu/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2 [pinned by action-pin]
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: tty-share_*
 
-      # - name: Debug with tty-share
-      #   if: ${{ matrix.goarch == 'arm64' }}
-      #   run: |
-      #     curl https://raw.githubusercontent.com/elisescu/tty-share/refs/heads/master/scripts/get.sh | sh
-      #     chmod u+x ./tty-share
-      #     export TERM=xterm-256color
-      #     ./tty-share -A --public --headless --headless-cols 255 --headless-rows 50 --no-wait --listen :8001
+# - name: Debug with tty-share
 
+#   if: ${{ matrix.goarch == 'arm64' }}
 
+#   run: |
+
+#     curl https://raw.githubusercontent.com/elisescu/tty-share/refs/heads/master/scripts/get.sh | sh
+
+#     chmod u+x ./tty-share
+
+#     export TERM=xterm-256color
+
+#     ./tty-share -A --public --headless --headless-cols 255 --headless-rows 50 --no-wait --listen :8001
