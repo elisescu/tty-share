@@ -1,5 +1,4 @@
 name: Claude Code
-
 on:
   issue_comment:
     types: [created]
@@ -9,7 +8,6 @@ on:
     types: [opened, assigned]
   pull_request_review:
     types: [submitted]
-
 jobs:
   claude:
     if: |
@@ -26,25 +24,26 @@ jobs:
       actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 [pinned by action-pin]
         with:
           fetch-depth: 1
-
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@9cdae7f0d995e3ba7c33f226087fdf82a59cd520 # v1 [pinned by action-pin]
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          
           # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
             actions: read
 
-          # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
-          # prompt: 'Update the pull request description to include a summary of changes.'
+# Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
 
-          # Optional: Add claude_args to customize behavior and configuration
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://docs.anthropic.com/en/docs/claude-code/sdk#command-line for available options
-          # claude_args: '--model claude-opus-4-1-20250805 --allowed-tools Bash(gh pr:*)'
+# prompt: 'Update the pull request description to include a summary of changes.'
 
+# Optional: Add claude_args to customize behavior and configuration
+
+# See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+
+# or https://docs.anthropic.com/en/docs/claude-code/sdk#command-line for available options
+
+# claude_args: '--model claude-opus-4-1-20250805 --allowed-tools Bash(gh pr:*)'
