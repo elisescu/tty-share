@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net"
+	"time"
 
 	"github.com/hashicorp/yamux"
 	log "github.com/sirupsen/logrus"
@@ -91,8 +92,7 @@ func (p *proxyConnection) RunProxy() {
 		defer frontConn.Close()
 
 		go func() {
-			backConn, err := net.Dial("tcp", p.backConnAddress)
-
+			backConn, err := p.dialWithRetry(p.backConnAddress, 5, 500*time.Millisecond)
 			if err != nil {
 				log.Errorf("Cannot proxy the connection to the target HTTP server: %s", err.Error())
 				return
@@ -102,6 +102,26 @@ func (p *proxyConnection) RunProxy() {
 			pipeConnectionsAndWait(backConn, frontConn)
 		}()
 	}
+}
+
+// dialWithRetry repeatedly dials the given address with exponential backoff
+// until it succeeds or the retry budget is exhausted. This handles the race
+// where the proxy starts accepting connections before the local HTTP server
+// has finished binding to its port.
+func (p *proxyConnection) dialWithRetry(addr string, maxRetries int, baseDelay time.Duration) (net.Conn, error) {
+	var lastErr error
+	delay := baseDelay
+	for i := 0; i < maxRetries; i++ {
+		conn, err := net.Dial("tcp", addr)
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+		log.Debugf("Retry %d/%d dialing %s: %s", i+1, maxRetries, addr, err.Error())
+		time.Sleep(delay)
+		delay *= 2
+	}
+	return nil, lastErr
 }
 
 func (p *proxyConnection) Stop() {
